@@ -361,45 +361,104 @@ function moduleCard(mod,date){
   if(p)meta+='<i class="'+(b?'on':'')+'">'+esc(p.name)+' '+(b||'未打卡')+'</i>';
   return '<div class="module'+(my?' done':'')+'"><button class="m-main" data-action="open-checkin" data-module="'+mod.id+'"><span class="m-icon" style="background:'+mod.color+'22;color:'+mod.color+'">'+(mod.icon||'·')+'</span><span class="m-body"><span class="m-name">'+esc(mod.name)+'</span><span class="m-meta">'+meta+'</span></span><span class="m-check">✓</span></button><button class="m-edit" data-action="open-mod-editor" data-module="'+mod.id+'">✎</button></div>';
 }
+
+// 极简重构版战绩页，避免嵌套语法错误
 function renderStatsPage() {
-  const mods = DB.modules.filter(x=>x.status==='active'); const normalMods = mods.filter(x=>!x.metric.isRoutine); const routineMods = mods.filter(x=>x.metric.isRoutine); const p = partner();
+  const p = partner();
+  const normalMods = DB.modules.filter(x=>x.status==='active' && !x.metric.isRoutine);
+  const routineMods = DB.modules.filter(x=>x.status==='active' && x.metric.isRoutine);
+  
   let html = '<div class="main"><div class="header"><div class="space-name" style="font-size:22px;text-align:center;margin-top:10px">🏆 打卡战绩榜</div></div>';
-  if(mods.length === 0) return html + '<div class="j-empty">还没有打卡模块</div></div>';
+  if(DB.modules.filter(x=>x.status==='active').length === 0) return html + '<div class="j-empty">还没有打卡模块</div></div>';
+
   if(normalMods.length > 0) {
     html += '<div class="stats-group"><div class="stats-group-title">日常打卡</div>';
     normalMods.forEach(mod => {
-      const myStats = getModuleStats(DB.currentMemberId, mod.id); const pStats = p ? getModuleStats(p.id, mod.id) : null;
-      const myBadges = [], pBadges = [];
-      Object.keys(BADGE_DEFS).forEach(d => { const days = parseInt(d); if (myStats.best >= days) myBadges.push(BADGE_DEFS[d]); if (pStats && pStats.best >= days) pBadges.push(BADGE_DEFS[d]); });
-      html += `<div class="stats-card"><div class="stats-head"><span style="font-size:18px">${mod.icon||'📌'}</span> ${esc(mod.name)}</div><div class="stats-body ${p ? '' : 'single'}"><div class="stats-col"><div class="stats-name"><span style="width:6px;height:6px;border-radius:50%;background:${mColor(me().id)}"></span> 我</div><div class="stats-row"><span>当前连续</span><b class="cur">${myStats.current} 天</b></div><div class="stats-row"><span>累计打卡</span><b>${myStats.total} 天</b></div><div class="stats-row"><span>中断天数</span><b class="${myStats.lost>0?'lost':''}">${myStats.lost > 0 ? myStats.lost + ' 天' : '保持中'}</b></div><div class="stats-row"><span>最长记录</span><b>${myStats.best} 天</b></div></div>${p ? `<div class="stats-col"><div class="stats-name"><span style="width:6px;height:6px;border-radius:50%;background:${mColor(p.id)}"></span> ${esc(p.name)}</div><div class="stats-row"><span>当前连续</span><b class="cur">${pStats.current} 天</b></div><div class="stats-row"><span>累计打卡</span><b>${pStats.total} 天</b></div><div class="stats-row"><span>中断天数</span><b class="${pStats.lost>0?'lost':''}">${pStats.lost > 0 ? pStats.lost + ' 天' : '保持中'}</b></div><div class="stats-row"><span>最长记录</span><b>${pStats.best} 天</b></div></div>` : ''}</div>${myBadges.length || pBadges.length ? `<div class="badge-wall" style="flex-direction:column;gap:8px;padding:12px">${myBadges.length ? `<div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center"><span style="font-size:11px;color:var(--ink2);margin-right:4px">我的</span>${myBadges.map(b => `<div class="badge-mini" title="${b.title}"><span class="b-icon">${b.icon}</span>${b.title.slice(0,2)}</div>`).join('')}</div>` : ''}${pBadges.length ? `<div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center"><span style="font-size:11px;color:var(--ink2);margin-right:4px">TA的</span>${pBadges.map(b => `<div class="badge-mini" title="${b.title}"><span class="b-icon">${b.icon}</span>${b.title.slice(0,2)}</div>`).join('')}</div>` : ''}</div>` : ''}</div>`;
+      const my = getModuleStats(DB.currentMemberId, mod.id);
+      const pt = p ? getModuleStats(p.id, mod.id) : null;
+      
+      let col1 = '<div class="stats-col"><div class="stats-name"><span style="width:6px;height:6px;border-radius:50%;background:' + mColor(me().id) + '"></span> 我</div>';
+      col1 += '<div class="stats-row"><span>当前连续</span><b class="cur">' + my.current + ' 天</b></div>';
+      col1 += '<div class="stats-row"><span>累计打卡</span><b>' + my.total + ' 天</b></div>';
+      col1 += '<div class="stats-row"><span>中断天数</span><b>' + (my.lost > 0 ? my.lost + ' 天' : '保持中') + '</b></div>';
+      col1 += '<div class="stats-row"><span>最长记录</span><b>' + my.best + ' 天</b></div></div>';
+      
+      let col2 = '';
+      if (p && pt) {
+        col2 = '<div class="stats-col"><div class="stats-name"><span style="width:6px;height:6px;border-radius:50%;background:' + mColor(p.id) + '"></span> ' + esc(p.name) + '</div>';
+        col2 += '<div class="stats-row"><span>当前连续</span><b class="cur">' + pt.current + ' 天</b></div>';
+        col2 += '<div class="stats-row"><span>累计打卡</span><b>' + pt.total + ' 天</b></div>';
+        col2 += '<div class="stats-row"><span>中断天数</span><b>' + (pt.lost > 0 ? pt.lost + ' 天' : '保持中') + '</b></div>';
+        col2 += '<div class="stats-row"><span>最长记录</span><b>' + pt.best + ' 天</b></div></div>';
+      }
+      
+      html += '<div class="stats-card"><div class="stats-head"><span style="font-size:18px">' + (mod.icon||'📌') + '</span> ' + esc(mod.name) + '</div>';
+      html += '<div class="stats-body ' + (p ? '' : 'single') + '">' + col1 + col2 + '</div></div>';
     });
     html += '</div>';
   }
+
   if(routineMods.length > 0) {
-    html += '<div class="stats-group"><div class="stats-group-title">作息习惯</div><div class="stats-card"><table class="compact-table"><thead><tr><th style="text-align:left;padding-left:12px">项目</th><th>${esc(me().name)} (连/累)</th>${p ? `<th>${esc(p.name)} (连/累)</th>` : ''}</tr></thead><tbody>';
-    routineMods.forEach(mod => { const my = getModuleStats(DB.currentMemberId, mod.id); const pt = p ? getModuleStats(p.id, mod.id) : null; html += `<tr><td class="mod-name">${mod.icon} ${esc(mod.name)}</td><td><span class="${my.current>0?'val-cur':'val-zero'}">${my.current}</span> / ${my.total}</td>${p ? `<td><span class="${pt.current>0?'val-cur':'val-zero'}">${pt.current}</span> / ${pt.total}</td>` : ''}</tr>`; });
-    html += `</tbody></table></div></div>`;
+    html += '<div class="stats-group"><div class="stats-group-title">作息习惯</div><div class="stats-card"><table class="compact-table"><thead><tr><th style="text-align:left;padding-left:12px">项目</th><th>' + esc(me().name) + ' (连/累)</th>' + (p ? '<th>' + esc(p.name) + ' (连/累)</th>' : '') + '</tr></thead><tbody>';
+    routineMods.forEach(mod => {
+      const my = getModuleStats(DB.currentMemberId, mod.id);
+      const pt = p ? getModuleStats(p.id, mod.id) : null;
+      html += '<tr><td class="mod-name">' + mod.icon + ' ' + esc(mod.name) + '</td><td><span class="' + (my.current>0?'val-cur':'val-zero') + '">' + my.current + '</span> / ' + my.total + '</td>';
+      if (p) html += '<td><span class="' + (pt.current>0?'val-cur':'val-zero') + '">' + pt.current + '</span> / ' + pt.total + '</td>';
+      html += '</tr>';
+    });
+    html += '</tbody></table></div></div>';
   }
   return html + '</div>';
 }
+
+// 极简重构版徽章页
 function renderBadgesPage() {
   if(!UI.badgeViewMemberId) UI.badgeViewMemberId = DB.currentMemberId;
-  const targetMem = DB.members.find(x=>x.id===UI.badgeViewMemberId) || me(); const maxInfo = getMemberMaxBadgeInfo(targetMem.id); const unlockedMap = getMemberUnlockedBadges(targetMem.id);
+  const targetMem = DB.members.find(x=>x.id===UI.badgeViewMemberId) || me();
+  const maxInfo = getMemberMaxBadgeInfo(targetMem.id);
+  const unlockedMap = getMemberUnlockedBadges(targetMem.id);
+  
   let html = '<div class="main"><div class="header"><div class="space-name" style="font-size:22px;text-align:center;margin-top:10px">🎖️ 徽章墙</div></div><div class="member-tabs">';
-  DB.members.forEach(m => { html += `<button class="member-tab ${m.id===UI.badgeViewMemberId?'on':''}" data-action="switch-badge-view" data-id="${m.id}"><span style="width:8px;height:8px;border-radius:50%;background:${mColor(m.id)}"></span>${esc(m.name)}</button>`; });
-  html += `</div><div class="card" style="padding:16px;margin-bottom:16px;text-align:center;background:linear-gradient(135deg,#fff,var(--line2))"><div style="font-size:13px;color:var(--ink2);margin-bottom:6px">${esc(targetMem.name)} 的最高记录</div><div style="font-size:28px;font-weight:800;color:${mColor(targetMem.id)};font-variant-numeric:tabular-nums">${maxInfo.maxDays} <span style="font-size:14px">天</span></div>${maxInfo.bestMod ? `<div style="font-size:12px;color:var(--ink3);margin-top:4px">由《${esc(maxInfo.bestMod.name)}》达成</div>` : ''}</div><div class="badges-grid">`;
-  const displayDays = []; for(let i=1; i<=30; i++) displayDays.push(i); [50, 100, 200, 365, 730, 1000].forEach(d => { if(!displayDays.includes(d)) displayDays.push(d); });
-  displayDays.forEach(d => { const b = getBadge(d); const locked = maxInfo.maxDays < d; const unlockInfo = unlockedMap[d]; let modTag = ''; if (!locked && unlockInfo && unlockInfo.mods.length > 0) { modTag = `<div class="badge-mod-tag">由 ${unlockInfo.mods[0].icon} ${esc(unlockInfo.mods[0].name)}</div>`; } html += `<div class="badge-item ${locked?'locked':''}" style="${!locked?'padding-bottom:22px':''}"><div class="icon">${b.icon}</div><div class="title">${esc(b.title)}</div><div class="desc">${locked ? `${d}天解锁` : `已达成`}</div>${modTag}</div>`; });
+  DB.members.forEach(m => {
+    html += '<button class="member-tab ' + (m.id===UI.badgeViewMemberId?'on':'') + '" data-action="switch-badge-view" data-id="' + m.id + '"><span style="width:8px;height:8px;border-radius:50%;background:' + mColor(m.id) + '"></span>' + esc(m.name) + '</button>';
+  });
+  html += '</div><div class="card" style="padding:16px;margin-bottom:16px;text-align:center;background:linear-gradient(135deg,#fff,var(--line2))"><div style="font-size:13px;color:var(--ink2);margin-bottom:6px">' + esc(targetMem.name) + ' 的最高记录</div><div style="font-size:28px;font-weight:800;color:' + mColor(targetMem.id) + ';font-variant-numeric:tabular-nums">' + maxInfo.maxDays + ' <span style="font-size:14px">天</span></div></div>';
+  
+  html += '<div class="badges-grid">';
+  const displayDays = [];
+  for(let i=1; i<=30; i++) displayDays.push(i);
+  [50, 100, 200, 365, 730, 1000].forEach(d => { if(!displayDays.includes(d)) displayDays.push(d); });
+
+  displayDays.forEach(d => {
+    const b = getBadge(d);
+    const locked = maxInfo.maxDays < d;
+    const unlockInfo = unlockedMap[d];
+    let modTag = '';
+    if (!locked && unlockInfo && unlockInfo.mods.length > 0) {
+      modTag = '<div class="badge-mod-tag">由 ' + unlockInfo.mods[0].icon + ' ' + esc(unlockInfo.mods[0].name) + '</div>';
+    }
+    html += '<div class="badge-item ' + (locked?'locked':'') + '" style="' + (!locked?'padding-bottom:22px':'') + '">';
+    html += '<div class="icon">' + b.icon + '</div>';
+    html += '<div class="title">' + esc(b.title) + '</div>';
+    html += '<div class="desc">' + (locked ? d + '天解锁' : '已达成') + '</div>';
+    html += modTag + '</div>';
+  });
+  
   return html + '</div></div>';
 }
+
 function renderGoals() {
   let html = '<div class="main">';
   DB.goalCats.forEach((cat, idx) => {
     const isDoneCat = (idx === DB.goalCats.length - 1); const list = DB.goals.filter(g => g.cat === cat).sort((a,b)=>a.createdAt-b.createdAt);
-    html += `<div class="goal-cat-title" style="color:${isDoneCat?'var(--ink3)':'var(--ink)'};margin-top:${idx===0?'0':'24px'}"><span>${esc(cat)} <span style="font-size:12px;font-weight:normal;color:var(--ink3);margin-left:4px">${list.length}</span></span><button class="edit-btn" data-action="cat-edit" data-idx="${idx}">✎ 改字</button></div>`;
+    html += '<div class="goal-cat-title" style="color:' + (isDoneCat?'var(--ink3)':'var(--ink)') + ';margin-top:' + (idx===0?'0':'24px') + '"><span>' + esc(cat) + ' <span style="font-size:12px;font-weight:normal;color:var(--ink3);margin-left:4px">' + list.length + '</span></span><button class="edit-btn" data-action="cat-edit" data-idx="' + idx + '">✎ 改字</button></div>';
     if(!list.length) html += '<div class="j-empty">暂无内容</div>';
-    else html += list.map(g => { const author = DB.members.find(x=>x.id===g.authorId); const dateStr = shortD(g.createdAtStr); return `<div class="goal-card ${g.done?'done':''}"><div class="it-circle-wrap"><button class="circle" data-action="goal-toggle" data-id="${g.id}">✓</button></div><button class="goal-main" data-action="goal-edit" data-id="${g.id}"><div class="goal-text">${esc(g.text)}</div><div class="goal-meta"><span>${esc(author?author.name:'未知')} 设定</span><span>·</span><span>${dateStr}</span></div></button><div class="it-btns"><button data-action="goal-del" data-id="${g.id}">×</button></div></div>`; }).join('');
-    if(!isDoneCat) html += `<button class="add-sub" data-action="goal-new" data-cat="${esc(cat)}">＋ 添加${esc(cat)}</button>`;
+    else html += list.map(g => { 
+      const author = DB.members.find(x=>x.id===g.authorId); const dateStr = shortD(g.createdAtStr); 
+      return '<div class="goal-card ' + (g.done?'done':'') + '"><div class="it-circle-wrap"><button class="circle" data-action="goal-toggle" data-id="' + g.id + '">✓</button></div><button class="goal-main" data-action="goal-edit" data-id="' + g.id + '"><div class="goal-text">' + esc(g.text) + '</div><div class="goal-meta"><span>' + esc(author?author.name:'未知') + ' 设定</span><span>·</span><span>' + dateStr + '</span></div></button><div class="it-btns"><button data-action="goal-del" data-id="' + g.id + '">×</button></div></div>'; 
+    }).join('');
+    if(!isDoneCat) html += '<button class="add-sub" data-action="goal-new" data-cat="' + esc(cat) + '">＋ 添加' + esc(cat) + '</button>';
   });
   return html + '</div>';
 }
