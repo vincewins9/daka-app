@@ -44,16 +44,16 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer;pad
 #loading-screen{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--ink2)}.loader{width:40px;height:40px;border:3px solid var(--line);border-top-color:var(--coral);border-radius:50%;animation:spin 1s linear infinite;margin-bottom:16px}@keyframes spin{to{transform:rotate(360deg)}}
 </style>
 <!-- 只在这里引入一次，使用国内最稳定的 jsDelivr UMD 版本 -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabaseClient/supabaseClient-js@2"></script>
 </head>
 <body>
 <div id="loading-screen"><div class="loader"></div><div style="font-size:14px" id="loading-text">正在连接空间...</div></div>
 <div id="app"></div>
 
 <script>
-const SUPABASE_URL = 'https://oqifkcswidzourkphspu.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_EDbc_4y4rRQ44uOusaxk4w_Pb_LSQVm';
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supabaseClient_URL = 'https://oqifkcswidzourkphspu.supabaseClient.co';
+const supabaseClient_ANON_KEY = 'sb_publishable_EDbc_4y4rRQ44uOusaxk4w_Pb_LSQVm';
+const supabaseClient = window.supabaseClient.createClient(supabaseClient_URL, supabaseClient_ANON_KEY);
 
 const $=(s,r=document)=>r.querySelector(s);
 const uid=()=>Math.random().toString(36).slice(2,10);
@@ -142,25 +142,25 @@ function save(){
 async function flushSave() {
   if(!SPACE_ID || !CURRENT_USER_ID) return;
   const patch = pendingPatch; pendingPatch = {};
-  const { error } = await supabase.rpc('merge_app_state', { p_space_id: SPACE_ID, p_patch: patch });
+  const { error } = await supabaseClient.rpc('merge_app_state', { p_space_id: SPACE_ID, p_patch: patch });
   if(error) { console.error('同步失败', error); pendingPatch = Object.assign(patch, pendingPatch); }
 }
 
 async function refreshMembers(){
   if(!SPACE_ID) return;
-  const { data: mems } = await supabase.from('members').select('id, user_id, name, wechat').eq('space_id', SPACE_ID);
+  const { data: mems } = await supabaseClient.from('members').select('id, user_id, name, wechat').eq('space_id', SPACE_ID);
   if(!mems) return;
   DB.members = mems.map(m=>({id:m.id,name:m.name,wechat:m.wechat,userId:m.user_id}));
   const mine = mems.find(m=>m.user_id===CURRENT_USER_ID);
   if(mine) DB.currentMemberId = mine.id;
-  const { data: sp } = await supabase.from('spaces').select('name, invite_code').eq('id', SPACE_ID).single();
+  const { data: sp } = await supabaseClient.from('spaces').select('name, invite_code').eq('id', SPACE_ID).single();
   if(sp){ DB.space = DB.space || {}; DB.space.name = sp.name; DB.space.inviteCode = sp.invite_code; }
 }
 
 let rtChannel = null;
 function subscribeRealtime() {
-  if(rtChannel) supabase.removeChannel(rtChannel);
-  rtChannel = supabase.channel('state-'+SPACE_ID).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'app_state', filter: 'space_id=eq.'+SPACE_ID }, payload => {
+  if(rtChannel) supabaseClient.removeChannel(rtChannel);
+  rtChannel = supabaseClient.channel('state-'+SPACE_ID).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'app_state', filter: 'space_id=eq.'+SPACE_ID }, payload => {
     if(payload.new.updated_by === CURRENT_USER_ID) return;
     const myId = DB.currentMemberId;
     DB = Object.assign(def(), payload.new.data);
@@ -172,14 +172,14 @@ function subscribeRealtime() {
 
 async function boot() {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await supabaseClient.auth.getUser();
     if(!user) {
-      const { data, error } = await supabase.auth.signInAnonymously();
+      const { data, error } = await supabaseClient.auth.signInAnonymously();
       if(error) throw error;
       CURRENT_USER_ID = data.user.id;
     } else { CURRENT_USER_ID = user.id; }
 
-    const { data: mem } = await supabase.from('members').select('space_id').eq('user_id', CURRENT_USER_ID).maybeSingle();
+    const { data: mem } = await supabaseClient.from('members').select('space_id').eq('user_id', CURRENT_USER_ID).maybeSingle();
     if(!mem) {
       $('#loading-screen').style.display = 'none';
       UI.view = 'onboard'; render(); return;
@@ -190,7 +190,7 @@ async function boot() {
     $('#loading-screen').style.display = 'none';
     if(DB.space) { UI.view = 'main'; applyTheme(); render(); }
 
-    const { data: row } = await supabase.from('app_state').select('data').eq('space_id', SPACE_ID).single();
+    const { data: row } = await supabaseClient.from('app_state').select('data').eq('space_id', SPACE_ID).single();
     if(row && row.data && Object.keys(row.data).length) {
       const myId = DB.currentMemberId;
       DB = Object.assign(def(), row.data);
@@ -201,7 +201,7 @@ async function boot() {
     UI.view = 'main'; applyTheme(); render(); subscribeRealtime();
   } catch(e) {
     console.error(e);
-    $('#loading-screen').innerHTML = '<div style="color:red;padding:20px;text-align:center;font-size:14px;line-height:1.5">连接失败，请刷新重试<br><br>错误信息：<br>'+e.message+'<br><br><span style="font-size:12px;color:#888">(请检查是否在 Supabase 执行了 SQL 语句并开启了匿名登录)</span></div>';
+    $('#loading-screen').innerHTML = '<div style="color:red;padding:20px;text-align:center;font-size:14px;line-height:1.5">连接失败，请刷新重试<br><br>错误信息：<br>'+e.message+'<br><br><span style="font-size:12px;color:#888">(请检查是否在 supabaseClient 执行了 SQL 语句并开启了匿名登录)</span></div>';
   }
 }
 
@@ -578,9 +578,9 @@ document.addEventListener('click', async function(e){
     const btn = el; btn.textContent = '创建中...'; btn.disabled = true;
     try{
       const code=genCode();
-      const { data: sp, error: e1 } = await supabase.from('spaces').insert({ name: sn||'我们的空间', invite_code: code }).select('id').single();
+      const { data: sp, error: e1 } = await supabaseClient.from('spaces').insert({ name: sn||'我们的空间', invite_code: code }).select('id').single();
       if(e1) throw e1;
-      const { data: mem, error: e2 } = await supabase.from('members').insert({ space_id: sp.id, user_id: CURRENT_USER_ID, name: nm }).select('id').single();
+      const { data: mem, error: e2 } = await supabaseClient.from('members').insert({ space_id: sp.id, user_id: CURRENT_USER_ID, name: nm }).select('id').single();
       if(e2) throw e2;
       SPACE_ID = sp.id;
       const initial = def();
@@ -594,7 +594,7 @@ document.addEventListener('click', async function(e){
         {id:uid(),name:'早起咯',icon:'☀️',color:'#f6c45b',metric:{type:'time',isRoutine:true},status:'active',sort:3},
         {id:uid(),name:'又赖床了',icon:'🛌',color:'#9b8a90',metric:{type:'time',isRoutine:true},status:'active',sort:4}
       ];
-      await supabase.from('app_state').insert({ space_id: sp.id, data: initial, updated_by: CURRENT_USER_ID });
+      await supabaseClient.from('app_state').insert({ space_id: sp.id, data: initial, updated_by: CURRENT_USER_ID });
       DB = initial; saveLocalCache(); UI.view='main'; UI.tab='today'; applyTheme(); render(); subscribeRealtime();
     }catch(err){ alert('创建失败: '+err.message); btn.textContent='创建'; btn.disabled=false; }
     return;
@@ -604,14 +604,14 @@ document.addEventListener('click', async function(e){
     const code=($('#in-code')&&$('#in-code').value||'').trim().toUpperCase(); const nm=($('#in-name2')&&$('#in-name2').value||'').trim(); if(!code||!nm){showToast('填写邀请码和名字');return;}
     const btn = el; btn.textContent = '加入中...'; btn.disabled = true;
     try{
-      const { data: sp, error: e1 } = await supabase.from('spaces').select('id').eq('invite_code', code).maybeSingle();
+      const { data: sp, error: e1 } = await supabaseClient.from('spaces').select('id').eq('invite_code', code).maybeSingle();
       if(e1 || !sp) throw new Error('邀请码不对');
-      const { count } = await supabase.from('members').select('id', { count: 'exact', head: true }).eq('space_id', sp.id);
+      const { count } = await supabaseClient.from('members').select('id', { count: 'exact', head: true }).eq('space_id', sp.id);
       if(count >= 2) throw new Error('这个空间已经有两个人了');
-      const { data: mem, error: e2 } = await supabase.from('members').insert({ space_id: sp.id, user_id: CURRENT_USER_ID, name: nm }).select('id').single();
+      const { data: mem, error: e2 } = await supabaseClient.from('members').insert({ space_id: sp.id, user_id: CURRENT_USER_ID, name: nm }).select('id').single();
       if(e2) { if(e2.code==='23505') throw new Error('你已经在这个空间里了'); throw e2; }
       SPACE_ID = sp.id; loadLocalCache();
-      const { data: row } = await supabase.from('app_state').select('data').eq('space_id', SPACE_ID).single();
+      const { data: row } = await supabaseClient.from('app_state').select('data').eq('space_id', SPACE_ID).single();
       if(row && row.data) { DB = Object.assign(def(), row.data); saveLocalCache(); }
       await refreshMembers(); UI.view='main'; UI.tab='today'; applyTheme(); render(); subscribeRealtime();
     }catch(err){ alert(err.message); btn.textContent='加入'; btn.disabled=false; }
@@ -621,7 +621,7 @@ document.addEventListener('click', async function(e){
   if(a==='tab'){
     UI.tab=el.dataset.tab; UI.drawer=null; render(); 
     if (SPACE_ID) {
-      supabase.from('app_state').select('data').eq('space_id', SPACE_ID).single().then(({data: row}) => {
+      supabaseClient.from('app_state').select('data').eq('space_id', SPACE_ID).single().then(({data: row}) => {
         if (row && row.data) {
           const myId = DB.currentMemberId;
           DB = Object.assign(def(), row.data);
@@ -797,7 +797,7 @@ document.addEventListener('click', async function(e){
   if(a==='export-data'){ const blob=new Blob([JSON.stringify(DB,null,2)],{type:'application/json'}); const url=URL.createObjectURL(blob); const link=document.createElement('a');link.href=url;link.download='jryjy-'+today()+'.json'; document.body.appendChild(link);link.click();document.body.removeChild(link); setTimeout(function(){URL.revokeObjectURL(url);},1000);showToast('已导出备份');return; }
   if(a==='clear-data'){
     if(confirm('确定清空所有云端和本地数据吗？这个操作无法撤销。')){
-      if(SPACE_ID) await supabase.from('app_state').delete().eq('space_id', SPACE_ID);
+      if(SPACE_ID) await supabaseClient.from('app_state').delete().eq('space_id', SPACE_ID);
       localStorage.removeItem('jryjy_cache_'+SPACE_ID); location.reload();
     }
     return;
