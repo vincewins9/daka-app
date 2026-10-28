@@ -42,18 +42,17 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer;pad
 .toast-cel{position:fixed;bottom:calc(92px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);width:calc(100% - 32px);max-width:448px;background:linear-gradient(135deg,var(--coral),var(--rose));color:#fff;border-radius:20px;padding:14px 18px;display:flex;align-items:center;gap:14px;z-index:150;animation:tin .35s cubic-bezier(.2,.9,.3,1.2);box-shadow:0 10px 30px rgba(232,146,124,.4)}.toast-cel.out{animation:tout .3s forwards}@keyframes tin{from{transform:translate(-50%,24px);opacity:0}to{transform:translate(-50%,0);opacity:1}}@keyframes tout{to{transform:translate(-50%,24px);opacity:0}}.tc-num{font-size:32px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}.tc-body{flex:1;min-width:0}.tc-text{font-size:14px;line-height:1.5;font-weight:600}.tc-sub{font-size:12px;opacity:.8;margin-top:2px}
 .toast{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:rgba(61,54,50,.94);color:#fff;padding:10px 18px;border-radius:999px;font-size:13px;z-index:300;max-width:88vw;text-align:center;transition:opacity .25s,transform .25s;font-weight:500}.toast.out{opacity:0;transform:translate(-50%,-10px)}
 #loading-screen{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--ink2)}.loader{width:40px;height:40px;border:3px solid var(--line);border-top-color:var(--coral);border-radius:50%;animation:spin 1s linear infinite;margin-bottom:16px}@keyframes spin{to{transform:rotate(360deg)}}
-</style>
+ </style>
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 </head>
 <body>
 <div id="loading-screen"><div class="loader"></div><div style="font-size:14px" id="loading-text">正在连接空间...</div></div>
 <div id="app"></div>
-
-<script type="module">
-  import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm'
-
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script>
 const SUPABASE_URL = 'https://oqifkcswidzourkphspu.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_EDbc_4y4rRQ44uOusaxk4w_Pb_LSQVm';
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const $=(s,r=document)=>r.querySelector(s);
 const uid=()=>Math.random().toString(36).slice(2,10);
