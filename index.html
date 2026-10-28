@@ -49,9 +49,11 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer;pad
 <div id="app"></div>
 
 <script type="module">
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-  
-const SUPABASE_URL = 'https://oqifkcswidzourkphspu.supabase.co';
+
+// 换成更稳定的 jsdelivr 源，防止你之前的加载报错
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm'
+// 换成你绑定的自定义域名（如果 sb.betteragain.cn 还没变绿，可以先用右边的 workers.dev 网址测试）
+const SUPABASE_URL = 'https://sb.betteragain.cn';  
 const SUPABASE_ANON_KEY = 'sb_publishable_EDbc_4y4rRQ44uOusaxk4w_Pb_LSQVm';
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY); 
 
