@@ -42,13 +42,14 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer;pad
 .toast-cel{position:fixed;bottom:calc(92px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);width:calc(100% - 32px);max-width:448px;background:linear-gradient(135deg,var(--coral),var(--rose));color:#fff;border-radius:20px;padding:14px 18px;display:flex;align-items:center;gap:14px;z-index:150;animation:tin .35s cubic-bezier(.2,.9,.3,1.2);box-shadow:0 10px 30px rgba(232,146,124,.4)}.toast-cel.out{animation:tout .3s forwards}@keyframes tin{from{transform:translate(-50%,24px);opacity:0}to{transform:translate(-50%,0);opacity:1}}@keyframes tout{to{transform:translate(-50%,24px);opacity:0}}.tc-num{font-size:32px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}.tc-body{flex:1;min-width:0}.tc-text{font-size:14px;line-height:1.5;font-weight:600}.tc-sub{font-size:12px;opacity:.8;margin-top:2px}
 .toast{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:rgba(61,54,50,.94);color:#fff;padding:10px 18px;border-radius:999px;font-size:13px;z-index:300;max-width:88vw;text-align:center;transition:opacity .25s,transform .25s;font-weight:500}.toast.out{opacity:0;transform:translate(-50%,-10px)}
 #loading-screen{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--ink2)}.loader{width:40px;height:40px;border:3px solid var(--line);border-top-color:var(--coral);border-radius:50%;animation:spin 1s linear infinite;margin-bottom:16px}@keyframes spin{to{transform:rotate(360deg)}}
- </style>
-<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+</style>
+<!-- 只在这里引入一次，使用国内最稳定的 jsDelivr UMD 版本 -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 <div id="loading-screen"><div class="loader"></div><div style="font-size:14px" id="loading-text">正在连接空间...</div></div>
 <div id="app"></div>
-<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+
 <script>
 const SUPABASE_URL = 'https://oqifkcswidzourkphspu.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_EDbc_4y4rRQ44uOusaxk4w_Pb_LSQVm';
@@ -361,7 +362,6 @@ function moduleCard(mod,date){
   return '<div class="module'+(my?' done':'')+'"><button class="m-main" data-action="open-checkin" data-module="'+mod.id+'"><span class="m-icon" style="background:'+mod.color+'22;color:'+mod.color+'">'+(mod.icon||'·')+'</span><span class="m-body"><span class="m-name">'+esc(mod.name)+'</span><span class="m-meta">'+meta+'</span></span><span class="m-check">✓</span></button><button class="m-edit" data-action="open-mod-editor" data-module="'+mod.id+'">✎</button></div>';
 }
 
-// 极简重构版战绩页，避免嵌套语法错误
 function renderStatsPage() {
   const p = partner();
   const normalMods = DB.modules.filter(x=>x.status==='active' && !x.metric.isRoutine);
@@ -411,7 +411,6 @@ function renderStatsPage() {
   return html + '</div>';
 }
 
-// 极简重构版徽章页
 function renderBadgesPage() {
   if(!UI.badgeViewMemberId) UI.badgeViewMemberId = DB.currentMemberId;
   const targetMem = DB.members.find(x=>x.id===UI.badgeViewMemberId) || me();
@@ -619,7 +618,20 @@ document.addEventListener('click', async function(e){
     return;
   }
 
-  if(a==='tab'){UI.tab=el.dataset.tab;UI.drawer=null;render();return;}
+  if(a==='tab'){
+    UI.tab=el.dataset.tab; UI.drawer=null; render(); 
+    if (SPACE_ID) {
+      supabase.from('app_state').select('data').eq('space_id', SPACE_ID).single().then(({data: row}) => {
+        if (row && row.data) {
+          const myId = DB.currentMemberId;
+          DB = Object.assign(def(), row.data);
+          if (myId) DB.currentMemberId = myId;
+          render();
+        }
+      });
+    }
+    return;
+  }
   if(a==='switch-badge-view'){UI.badgeViewMemberId=el.dataset.id;render();return;}
   if(a==='list-tab'){UI.listTab=el.dataset.tab;render();return;}
   if(a==='toggle-fold-cal'){UI.calExpanded=!UI.calExpanded;render();return;}
