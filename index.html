@@ -50,47 +50,10 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer;pad
 
 <script type="module">
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+  
 const SUPABASE_URL = 'https://oqifkcswidzourkphspu.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_EDbc_4y4rRQ44uOusaxk4w_Pb_LSQVm';
-
-// --- 下面是新增的 DNS-over-HTTPS 绕过代码 ---
-const DOH_ENDPOINT = 'https://cloudflare-dns.com/dns-query';
-
-async function resolveViaDoH(hostname) {
-  const url = `${DOH_ENDPOINT}?name=${encodeURIComponent(hostname)}&type=A`;
-  const res = await fetch(url, { headers: { 'Accept': 'application/dns-json' } });
-  if (!res.ok) throw new Error('DoH request failed');
-  const data = await res.json();
-  if (data.Answer && data.Answer.length > 0) {
-    return data.Answer[0].data; // 返回解析到的 IP
-  }
-  throw new Error('No A record found');
-}
-
-const dohFetch = async (input, init) => {
-  const url = typeof input === 'string' ? input : input.url;
-  const urlObj = new URL(url);
-  
-  if (urlObj.hostname.endsWith('supabase.co')) {
-    try {
-      const ip = await resolveViaDoH(urlObj.hostname);
-      const ipUrl = url.replace(urlObj.hostname, ip);
-      const headers = new Headers(init?.headers || {});
-      headers.set('Host', urlObj.hostname);
-      
-      return fetch(ipUrl, { ...init, headers });
-    } catch (e) {
-      console.warn('DoH 解析失败，回退到系统 DNS:', e);
-    }
-  }
-  return fetch(input, init);
-};
-// --- 新增代码结束 ---
-
-// 最后，用全新的带自定义 fetch 的方式初始化 supabase（只保留这一句！）
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  global: { fetch: dohFetch }
-});
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY); 
 
 
 const $=(s,r=document)=>r.querySelector(s);
