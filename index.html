@@ -43,17 +43,18 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer;pad
 .toast{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:rgba(61,54,50,.94);color:#fff;padding:10px 18px;border-radius:999px;font-size:13px;z-index:300;max-width:88vw;text-align:center;transition:opacity .25s,transform .25s;font-weight:500}.toast.out{opacity:0;transform:translate(-50%,-10px)}
 #loading-screen{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--ink2)}.loader{width:40px;height:40px;border:3px solid var(--line);border-top-color:var(--coral);border-radius:50%;animation:spin 1s linear infinite;margin-bottom:16px}@keyframes spin{to{transform:rotate(360deg)}}
 </style>
-<!-- 只在这里引入一次，使用国内最稳定的 jsDelivr UMD 版本 -->
-<script src="https://cdn.jsdelivr.net/npm/@supabaseClient/supabaseClient-js@2"></script>
+<!-- 终极稳定：引入唯一的一次库 -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 <div id="loading-screen"><div class="loader"></div><div style="font-size:14px" id="loading-text">正在连接空间...</div></div>
 <div id="app"></div>
 
 <script>
-const supabaseClient_URL = 'https://oqifkcswidzourkphspu.supabaseClient.co';
-const supabaseClient_ANON_KEY = 'sb_publishable_EDbc_4y4rRQ44uOusaxk4w_Pb_LSQVm';
-const supabaseClient = window.supabaseClient.createClient(supabaseClient_URL, supabaseClient_ANON_KEY);
+// 核心修改点：解决变量冲突！
+const SUPABASE_URL = 'https://oqifkcswidzourkphspu.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_EDbc_4y4rRQ44uOusaxk4w_Pb_LSQVm';
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const $=(s,r=document)=>r.querySelector(s);
 const uid=()=>Math.random().toString(36).slice(2,10);
@@ -201,7 +202,7 @@ async function boot() {
     UI.view = 'main'; applyTheme(); render(); subscribeRealtime();
   } catch(e) {
     console.error(e);
-    $('#loading-screen').innerHTML = '<div style="color:red;padding:20px;text-align:center;font-size:14px;line-height:1.5">连接失败，请刷新重试<br><br>错误信息：<br>'+e.message+'<br><br><span style="font-size:12px;color:#888">(请检查是否在 supabaseClient 执行了 SQL 语句并开启了匿名登录)</span></div>';
+    $('#loading-screen').innerHTML = '<div style="color:red;padding:20px;text-align:center;font-size:14px;line-height:1.5">连接失败，请刷新重试<br><br>错误信息：<br>'+e.message+'<br><br><span style="font-size:12px;color:#888">(请检查是否在 Supabase 执行了 SQL 语句并开启了匿名登录)</span></div>';
   }
 }
 
