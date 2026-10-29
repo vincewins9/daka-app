@@ -158,10 +158,39 @@ async function flushSave() {
 async function refreshMembers(){
   if(!SPACE_ID) return;
   const { data: mems } = await supabase.from('members').select('id, user_id, name, wechat').eq('space_id', SPACE_ID);
-  if(!mems) return;
-  DB.members = mems.map(m=>({id:m.id,name:m.name,wechat:m.wechat,userId:m.user_id}));
-  const mine = mems.find(m=>m.user_id===CURRENT_USER_ID);
-  if(mine) DB.currentMemberId = mine.id;
+  if(!mems || mems.length === 0) return;
+  
+  DB.members = mems.map(m=>({id:m.id, name:m.name, wechat:m.wechat, userId:m.user_id}));
+  
+  // 1. 尝试正常匹配设备指纹
+  let mine = mems.find(m => String(m.user_id).toLowerCase() === String(CURRENT_USER_ID).toLowerCase());
+  
+  // 2. 匹配不上，尝试用本地缓存 ID 强绑
+  if(!mine && DB.currentMemberId) {
+    const cachedUser = mems.find(m => m.id === DB.currentMemberId);
+    if(cachedUser) {
+      mine = cachedUser;
+      await supabase.from('members').update({ user_id: CURRENT_USER_ID }).eq('id', mine.id);
+    }
+  }
+  
+  // 3. 如果只有1个人，强行认领
+  if(!mine && mems.length === 1) {
+    mine = mems[0];
+    await supabase.from('members').update({ user_id: CURRENT_USER_ID }).eq('id', mine.id);
+  }
+
+  // 4. 彻底找不到（比如双人空间里，换了设备），直接踢回首页，绝不死循环！
+  if(!mine) {
+    alert("设备身份已变更，请重新用邀请码和密码登录。");
+    localStorage.clear();
+    location.reload();
+    throw new Error("需要重新登录"); 
+  }
+
+  DB.currentMemberId = mine.id;
+  saveLocalCache();
+  
   const { data: sp } = await supabase.from('spaces').select('name, invite_code').eq('id', SPACE_ID).single();
   if(sp){ DB.space = DB.space || {}; DB.space.name = sp.name; DB.space.inviteCode = sp.invite_code; }
 }
@@ -922,16 +951,9 @@ document.addEventListener('click', async function(e){
 
   if(a==='force-refresh'){
     if(!SPACE_ID) return;
-    showToast('正在拉取最新数据...');
-    const { data: row } = await supabase.from('app_state').select('data').eq('space_id', SPACE_ID).single();
-    if(row && row.data) {
-      DB = Object.assign(def(), row.data);
-      DB.currentMemberId = null; // 强制清空旧身份
-      await refreshMembers();    // 重新从 members 表认领真正的自己
-      applyTheme(); 
-      render();
-      showToast('数据已刷新');
-    }
+    showToast('正在重新连接...');
+    // 直接刷新页面，重新走一遍最严格的 boot() 认证流程，绝不卡死！
+    location.reload(); 
     return;
   }
     if(a==='logout'){
