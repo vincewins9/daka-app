@@ -270,7 +270,7 @@ function getMemberUnlockedBadges(mid) {
 }
 const CD_TYPES={'纪念日':'💗','考试':'📝','回家':'🏠','放假':'🎉','旅行':'✈️','其他':'📎'};
 
-const UI={ view:'main', tab:'today', calMonth:mKey(today()), drawer:null, celebrate:null, onboardStep:'choose', listTab:'travel', tmp:{}, celebrated:new Set(), journalScope:'me', cdType:'纪念日', calExpanded:false, targetMemberId:null, collapsed:{'routine':true}, badgeViewMemberId:null };
+const UI={ view:'main', tab:'today', calMonth:mKey(today()), drawer:null, celebrate:null, onboardStep:'choose', listTab:'travel', tmp:{}, celebrated:new Set(), journalScope:'me', cdType:'纪念日', calExpanded:false, targetMemberId:null, collapsed:{'routine':true}, badgeViewMemberId:null, calendarView:'grid', calendarSort:'desc' };
 
 function render(){
   const app=$('#app');
@@ -364,14 +364,39 @@ function renderRoutineBlock(date){
   }).join('')}</div>`;
 }
 function renderJournalBlock(t,p){
-  const tj=DB.journals.filter(j=>j.date===t); const jMe=[],jTa=[],jBoth=[];
-  tj.forEach(j=>{ const a=DB.members.find(x=>x.id===j.memberId);if(!a)return; const isMe=j.memberId===DB.currentMemberId;
-    if(j.scope==='both')jBoth.push({j,a}); else if(j.scope==='me'){isMe?jMe.push({j,a}):jTa.push({j,a});} else{isMe?jTa.push({j,a}):jMe.push({j,a});}
+  const myId = DB.currentMemberId;
+  if(!myId || myId === 'none') return '<div class="j-empty">正在确认身份，请刷新...</div>';
+
+  const tj = DB.journals.filter(j=>j.date===t);
+  const jMe = [], jTa = [], jBoth = [];
+
+  tj.forEach(j => {
+    const author = DB.members.find(x=>x.id===j.memberId);
+    if(!author) return;
+    
+    if(j.scope === 'both') {
+      jBoth.push({j, author});
+    } else if(j.memberId === myId) {
+      jMe.push({j, author}); 
+    } else {
+      jTa.push({j, author}); 
+    }
   });
-  const jCard=x=>'<div class="j-card" data-action="j-edit" data-id="'+x.j.id+'"><button class="j-del" data-action="j-del" data-id="'+x.j.id+'">×</button><div class="j-head"><span class="j-tag '+x.j.scope+'">'+esc(x.a.name)+'</span><span class="j-name">'+new Date(x.j.ts).getHours()+':'+pad(new Date(x.j.ts).getMinutes())+'</span></div><div class="j-text">'+esc(x.j.text)+'</div></div>';
+
+  const jCard=x=> {
+    const isMe = x.j.memberId === myId;
+    const displayName = isMe ? '我' : esc(x.author.name); 
+    return '<div class="j-card" data-action="j-edit" data-id="'+x.j.id+'"><button class="j-del" data-action="j-del" data-id="'+x.j.id+'">×</button><div class="j-head"><span class="j-tag '+x.j.scope+'">'+displayName+'</span><span class="j-name">'+new Date(x.j.ts).getHours()+':'+pad(new Date(x.j.ts).getMinutes())+'</span></div><div class="j-text">'+esc(x.j.text)+'</div></div>';
+  };
+  
   const jBlock=(label,dot,list)=>'<div class="j-group"><div class="j-glabel"><span class="j-gdot" style="background:'+dot+'"></span>'+label+'</div>'+(list.length?list.map(jCard).join(''):'<div class="j-empty" style="padding:9px">还没有</div>')+'</div>';
-  return jBlock('我',mColor(me().id),jMe)+(p?jBlock(esc(p.name),mColor(p.id),jTa):'')+jBlock('一起','#d87a95',jBoth)+
-    '<div class="j-actions"><button data-action="open-journal" data-scope="me">记我</button>'+(p?'<button data-action="open-journal" data-scope="partner">记 TA</button>':'')+'<button data-action="open-journal" data-scope="both">记一起</button></div>';
+
+  return jBlock('我', mColor(myId), jMe) + 
+         (p ? jBlock(esc(p.name), mColor(p.id), jTa) : '') + 
+         jBlock('一起', '#d87a95', jBoth) +
+    '<div class="j-actions"><button data-action="open-journal" data-scope="me">记我</button>' +
+    (p ? '<button data-action="open-journal" data-scope="partner">记 TA</button>' : '') +
+    '<button data-action="open-journal" data-scope="both">记一起</button></div>';
 }
 function renderFoldCalendarBlock(){
   const y=+UI.calMonth.slice(0,4),mo=+UI.calMonth.slice(5,7); const total=dim(y,mo),first=new Date(y,mo-1,1).getDay(),t=today(),p=partner(); const cells=[];
@@ -492,7 +517,62 @@ function renderCalendarPage(){
   const y=+UI.calMonth.slice(0,4),mo=+UI.calMonth.slice(5,7); const total=dim(y,mo),first=new Date(y,mo-1,1).getDay(),t=today(),p=partner(); const cells=[];
   for(let i=0;i<first;i++)cells.push('<div class="cal-cell empty"></div>');
   for(let d=1;d<=total;d++){ const ds=y+'-'+pad(mo)+'-'+pad(d); const hm=DB.checkins.some(c=>c.memberId===DB.currentMemberId&&c.date===ds); const hp=p&&DB.checkins.some(c=>c.memberId===p.id&&c.date===ds); const met=hasMet(ds); cells.push('<button class="cal-cell'+(ds===t?' today':'')+(met?' met':'')+'" data-action="open-day" data-date="'+ds+'">'+(met?'<span class="cal-heart">💗</span>':'')+'<span class="cal-d">'+d+'</span><span class="cal-dots"><i class="dot'+(hm?' on':'')+'" style="--c:'+mColor(DB.currentMemberId)+'"></i>'+(p?'<i class="dot'+(hp?' on':'')+'" style="--c:'+mColor(p.id)+'"></i>':'')+'</span></button>'); }
-  return '<div class="main"><div style="margin-bottom:16px;position:relative"><input type="search" id="search-input" placeholder="🔍 搜索见面记录、随记、清单..." oninput="window.__doSearch(this.value)" style="width:100%;background:#fff;border:1.5px solid var(--line);border-radius:12px;padding:10px 14px;font-size:14px;"></div><div id="search-results" style="display:none"></div><div id="calendar-main"><div class="cal-head"><div class="cal-title">'+y+' 年 '+mo+' 月 <span class="caret">▼</span><input type="date" onchange="window.__jumpMonth(this.value)"></div><div class="cal-nav"><button data-action="cal-prev">‹</button><button data-action="cal-next">›</button></div></div><div class="cal-week">'+['日','一','二','三','四','五','六'].map(w=>'<span>'+w+'</span>').join('')+'</div><div class="cal-grid">'+cells.join('')+'</div><div style="display:flex;gap:16px;justify-content:center;margin-top:14px;font-size:11px;color:var(--ink2);font-weight:500"><i style="display:inline-flex;align-items:center;gap:5px;font-style:normal"><span style="width:6px;height:6px;border-radius:50%;background:'+mColor(me().id)+'"></span>'+esc(me().name)+'</i>'+(p?'<i style="display:inline-flex;align-items:center;gap:5px;font-style:normal"><span style="width:6px;height:6px;border-radius:50%;background:'+mColor(p.id)+'"></span>'+esc(p.name)+'</i>':'')+'<i style="display:inline-flex;align-items:center;gap:5px;font-style:normal">💗 见面</i></div><div class="sec-title" style="margin-top:20px">操作</div><div class="card"><button class="row" data-action="open-history"><span><span class="row-label">导入历史打卡</span><span class="row-sub" style="display:block">之前练过？把数字接上</span></span><span class="row-chev">›</span></button><button class="row" data-action="open-meet-history"><span><span class="row-label">补录见面日</span><span class="row-sub" style="display:block">以前见过的日子可以补上</span></span><span class="row-chev">›</span></button></div></div></div>';
+  
+  const searchHtml = '<div style="margin-bottom:16px;position:relative"><input type="search" id="search-input" placeholder="🔍 搜索见面记录、随记、清单..." oninput="window.__doSearch(this.value)" style="width:100%;background:#fff;border:1.5px solid var(--line);border-radius:12px;padding:10px 14px;font-size:14px;"></div><div id="search-results" style="display:none"></div>';
+  
+  const segHtml = `<div class="seg" style="margin-bottom:16px;">
+    <button class="${UI.calendarView==='grid'?'on':''}" data-action="switch-cal-view" data-view="grid">📅 日历视图</button>
+    <button class="${UI.calendarView==='list'?'on':''}" data-action="switch-cal-view" data-view="list">📜 列表视图</button>
+  </div>`;
+
+  let mainContent = '';
+
+  if (UI.calendarView === 'grid') {
+    mainContent = `<div id="calendar-main">
+      <div class="cal-head"><div class="cal-title">${y} 年 ${mo} 月 <span class="caret">▼</span><input type="date" onchange="window.__jumpMonth(this.value)"></div><div class="cal-nav"><button data-action="cal-prev">‹</button><button data-action="cal-next">›</button></div></div>
+      <div class="cal-week">${['日','一','二','三','四','五','六'].map(w=>'<span>'+w+'</span>').join('')}</div>
+      <div class="cal-grid">${cells.join('')}</div>
+      <div style="display:flex;gap:16px;justify-content:center;margin-top:14px;font-size:11px;color:var(--ink2);font-weight:500"><i style="display:inline-flex;align-items:center;gap:5px;font-style:normal"><span style="width:6px;height:6px;border-radius:50%;background:${mColor(me().id)}"></span>${esc(me().name)}</i>${p?`<i style="display:inline-flex;align-items:center;gap:5px;font-style:normal"><span style="width:6px;height:6px;border-radius:50%;background:${mColor(p.id)}"></span>${esc(p.name)}</i>`:''}<i style="display:inline-flex;align-items:center;gap:5px;font-style:normal">💗 见面</i></div>
+      <div class="sec-title" style="margin-top:20px">操作</div><div class="card"><button class="row" data-action="open-history"><span><span class="row-label">导入历史打卡</span><span class="row-sub" style="display:block">之前练过？把数字接上</span></span><span class="row-chev">›</span></button><button class="row" data-action="open-meet-history"><span><span class="row-label">补录见面日</span><span class="row-sub" style="display:block">以前见过的日子可以补上</span></span><span class="row-chev">›</span></button></div>
+    </div>`;
+  } else {
+    const allDates = new Set([...DB.journals.map(j=>j.date), ...DB.checkins.map(c=>c.date), ...DB.meetups.map(m=>m.date)]);
+    const sortedDates = Array.from(allDates).sort((a,b)=> UI.calendarSort === 'desc' ? b.localeCompare(a) : a.localeCompare(b));
+    
+    const sortBtn = `<div style="display:flex; justify-content:flex-end; margin-bottom:12px;">
+      <button class="btn ghost" style="width:auto; padding:6px 12px; border-radius:8px; font-size:12px; display:flex; align-items:center; gap:4px;" data-action="switch-cal-sort">
+        ${UI.calendarSort === 'desc' ? '⬇️ 最新在前' : '⬆️ 最早在前'}
+      </button>
+    </div>`;
+
+    if (sortedDates.length === 0) {
+      mainContent = '<div class="j-empty">还没有任何历史记录</div>';
+    } else {
+      mainContent = sortBtn + sortedDates.map(date => {
+        const dJournals = DB.journals.filter(j=>j.date===date);
+        const dCheckins = DB.checkins.filter(c=>c.date===date);
+        const isMet = hasMet(date);
+        let preview = '';
+        if (isMet) preview += '<span style="color:var(--rose);font-size:12px;margin-right:8px;">💗 见面</span>';
+        if (dJournals.length > 0) preview += `<span style="font-size:12px;color:var(--blue);">有 ${dJournals.length} 条随记</span>`;
+        let checkinPreview = '';
+        if (dCheckins.length > 0) {
+          const uniqueMods = [...new Set(dCheckins.map(c => DB.modules.find(m=>m.id===c.moduleId)?.name).filter(Boolean))];
+          if(uniqueMods.length) checkinPreview = `<div style="font-size:11px;color:var(--ink3);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">打卡: ${uniqueMods.join(', ')}</div>`;
+        }
+        return `<div class="card" style="padding:14px;cursor:pointer;" data-action="open-day" data-date="${date}">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <div style="font-weight:700;font-size:15px;color:var(--ink);">${humanD(date)}</div>
+            <div style="font-size:12px;color:var(--ink3);">›</div>
+          </div>
+          <div>${preview || '<span style="font-size:12px;color:var(--ink3);">无随记</span>'}</div>
+          ${checkinPreview}
+        </div>`;
+      }).join('');
+    }
+  }
+
+  return '<div class="main">' + searchHtml + segHtml + mainContent + '</div>';
 }
 function renderLists(){
   const travel=UI.listTab==='travel'; const seg='<div class="seg"><button class="'+(travel?'on':'')+'" data-action="list-tab" data-tab="travel">🌍 旅行清单</button><button class="'+(travel?'':'on')+'" data-action="list-tab" data-tab="todo">🎯 一起做</button></div>';
@@ -511,7 +591,7 @@ function renderSettings(){
   const isCustom=DB.theme&&DB.theme.startsWith('#');
   return '<div class="main"><div class="sec-title" style="margin-top:6px">空间</div><div class="card"><div class="row" data-action="edit-space"><span><span class="row-label">'+esc(DB.space?.name||'')+'</span><span class="row-sub" style="display:block">点击修改空间名称</span></span></div><div class="row"><span><span class="row-sub" style="display:block;margin-bottom:6px">邀请码</span><span class="invite-code">'+(DB.space?.inviteCode||'')+'</span></span><button class="row-value" data-action="copy-code" style="color:var(--coral);font-weight:600">复制</button></div>'+
     DB.members.map(x=>'<div class="row" data-action="edit-member" data-id="'+x.id+'"><span class="member-line"><span class="member-dot" style="background:'+mColor(x.id)+'"></span>'+esc(x.name)+(x.id===DB.currentMemberId?'（我）':'')+(x.wechat?'<span class="wechat-tag">微信 '+esc(x.wechat)+'</span>':'')+'</span><span class="row-chev">✎</span></div>').join('')+
-    (!p?'<div class="row"><span class="row-sub">还差一个人，把邀请码发给对方</span></div>':'')+'</div><div class="sec-title">主题配色</div><div class="card" style="padding:14px"><div class="theme-grid">'+themeList+'</div><div class="sec-title" style="margin:4px 2px 8px;font-size:12px">自定义颜色（十六进制）</div><div class="hex-row"><input id="in-hex" placeholder="#E8927C" maxlength="7" value="'+(isCustom?DB.theme.toUpperCase():'')+'"><div class="preview" id="hex-preview" style="background:'+(isCustom?DB.theme:'#e8927c')+'"></div></div><div class="quick" style="margin-top:10px"><button data-action="apply-hex">应用自定义颜色</button>'+(isCustom?'<button data-action="set-theme" data-key="coral">恢复默认</button>':'')+'</div></div><div class="sec-title">账号</div><div class="card"><button class="row" data-action="open-wechat"><span><span class="row-label">微信绑定</span><span class="row-sub" style="display:block">'+(m.wechat?'已关联 '+esc(m.wechat):'未绑定')+'</span></span><span class="row-chev">›</span></button><button class="row" data-action="switch-member"><span class="row-label">切换身份</span><span class="row-chev">›</span></button><button class="row" data-action="change-pwd"><span class="row-label" style="color:var(--coral)">修改我的密码</span><span class="row-chev">›</span></button></div><div class="sec-title">打卡模块</div><div class="card">'+modRows+'<button class="row" data-action="open-mod-editor"><span class="row-label" style="color:var(--coral)">＋ 新建模块</span></button>'+(arch.length?'<button class="row" data-action="open-archived"><span class="row-label">已归档（'+arch.length+'）</span><span class="row-chev">›</span></button>':'')+    '<div class="sec-title">数据</div><div class="card"><button class="row" data-action="export-data"><span class="row-label">导出全部数据</span><span class="row-chev">›</span></button><button class="row" data-action="force-refresh"><span class="row-label" style="color:var(--coral)">刷新云端数据</span><span class="row-chev">›</span></button><button class="row" data-action="clear-data"><span class="row-label" style="color:#c9707f">清空本地数据</span><span class="row-chev">›</span></button></div><p class="footnote" style="margin-top:20px">今日宜加油 · 数据实时同步至云端<br>如需换设备，请重新用邀请码加入</p></div>';
+    (!p?'<div class="row"><span class="row-sub">还差一个人，把邀请码发给对方</span></div>':'')+'</div><div class="sec-title">主题配色</div><div class="card" style="padding:14px"><div class="theme-grid">'+themeList+'</div><div class="sec-title" style="margin:4px 2px 8px;font-size:12px">自定义颜色（十六进制）</div><div class="hex-row"><input id="in-hex" placeholder="#E8927C" maxlength="7" value="'+(isCustom?DB.theme.toUpperCase():'')+'"><div class="preview" id="hex-preview" style="background:'+(isCustom?DB.theme:'#e8927c')+'"></div></div><div class="quick" style="margin-top:10px"><button data-action="apply-hex">应用自定义颜色</button>'+(isCustom?'<button data-action="set-theme" data-key="coral">恢复默认</button>':'')+'</div></div><div class="sec-title">账号</div><div class="card"><button class="row" data-action="open-wechat"><span><span class="row-label">微信绑定</span><span class="row-sub" style="display:block">'+(m.wechat?'已关联 '+esc(m.wechat):'未绑定')+'</span></span><span class="row-chev">›</span></button><button class="row" data-action="switch-member"><span class="row-label">切换身份</span><span class="row-chev">›</span></button><button class="row" data-action="change-pwd"><span class="row-label" style="color:var(--coral)">修改我的密码</span><span class="row-chev">›</span></button></div><div class="sec-title">打卡模块</div><div class="card">'+modRows+'<button class="row" data-action="open-mod-editor"><span class="row-label" style="color:var(--coral)">＋ 新建模块</span></button>'+(arch.length?'<button class="row" data-action="open-archived"><span class="row-label">已归档（'+arch.length+'）</span><span class="row-chev">›</span></button>':'')+'</div><div class="sec-title">数据与安全</div><div class="card"><button class="row" data-action="export-data"><span class="row-label">导出全部数据</span><span class="row-chev">›</span></button><button class="row" data-action="force-refresh"><span class="row-label" style="color:var(--coral)">刷新云端数据</span><span class="row-chev">›</span></button><button class="row" data-action="logout"><span class="row-label" style="color:#c9707f">退出当前账号</span><span class="row-chev">›</span></button><button class="row" data-action="clear-data"><span class="row-label" style="color:#c9707f">清空本地数据</span><span class="row-chev">›</span></button></div><p class="footnote" style="margin-top:20px">今日宜加油 · 数据实时同步至云端<br>如需换设备，请重新用邀请码加入</p></div>';
 }
 
 function renderTabbar(){
@@ -663,6 +743,8 @@ document.addEventListener('click', async function(e){
   if(a==='tab'){UI.tab=el.dataset.tab;UI.drawer=null;render();return;}
   if(a==='switch-badge-view'){UI.badgeViewMemberId=el.dataset.id;render();return;}
   if(a==='list-tab'){UI.listTab=el.dataset.tab;render();return;}
+  if(a==='switch-cal-view'){UI.calendarView=el.dataset.view;render();return;}
+  if(a==='switch-cal-sort'){UI.calendarSort = UI.calendarSort === 'desc' ? 'asc' : 'desc';render();return;}
   if(a==='toggle-fold-cal'){UI.calExpanded=!UI.calExpanded;render();return;}
   if(a==='toggle-collapse'){UI.collapsed[el.dataset.id] = !UI.collapsed[el.dataset.id];render();return;}
   if(a==='quick-routine'){ e.stopPropagation(); const modId=el.dataset.module, date=el.dataset.date; UI.targetMemberId=DB.currentMemberId; UI.tmp.backfillMode=null; UI.drawer={type:'checkin', moduleId:modId, date:date}; render(); return; }
@@ -848,6 +930,14 @@ document.addEventListener('click', async function(e){
       applyTheme(); 
       render();
       showToast('数据已刷新');
+    }
+    return;
+  }
+    if(a==='logout'){
+    if(confirm('确定要退出当前账号并重新登录吗？打卡数据已保存在云端，不会丢失。')) {
+      await supabase.auth.signOut();
+      localStorage.clear();
+      location.reload();
     }
     return;
   }
