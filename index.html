@@ -824,8 +824,21 @@ document.addEventListener('click', async function(e){
   if(a==='apply-hex'){ const v=($('#in-hex')&&$('#in-hex').value||'').trim(); if(!/^#[0-9a-fA-F]{6}$/.test(v)){showToast('请输入 #RRGGBB 格式，如 #E8927C');return;} DB.theme=v.toUpperCase();save();applyTheme();render();showToast('主题已更新');return; }
 
   if(a==='copy-code'){ const code=DB.space.inviteCode; if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(code).then(function(){showToast('邀请码已复制');},function(){showToast('邀请码：'+code);}); else showToast('邀请码：'+code); return; }
-  if(a==='export-data'){ const blob=new Blob([JSON.stringify(DB,null,2)],{type:'application/json'}); const url=URL.createObjectURL(blob); const link=document.createElement('a');link.href=url;link.download='jryjy-'+today()+'.json'; document.body.appendChild(link);link.click();document.body.removeChild(link); setTimeout(function(){URL.revokeObjectURL(url);},1000);showToast('已导出备份');return; }
-    if(a==='force-refresh'){
+    if(a==='export-data'){ 
+    const blob=new Blob([JSON.stringify(DB,null,2)],{type:'application/json'}); 
+    const url=URL.createObjectURL(blob); 
+    const link=document.createElement('a');
+    link.href=url;
+    link.download='jryjy-'+today()+'.json'; 
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link); 
+    setTimeout(function(){URL.revokeObjectURL(url);},1000);
+    showToast('已导出备份');
+    return; 
+  }
+
+  if(a==='force-refresh'){
     if(!SPACE_ID) return;
     showToast('正在拉取最新数据...');
     const { data: row } = await supabase.from('app_state').select('data').eq('space_id', SPACE_ID).single();
@@ -839,15 +852,16 @@ document.addEventListener('click', async function(e){
     }
     return;
   }
-  
+
   if(a==='clear-data'){
     if(confirm('确定清空所有云端和本地数据吗？这个操作无法撤销。')){
       if(SPACE_ID) await supabase.from('app_state').delete().eq('space_id', SPACE_ID);
-      localStorage.removeItem('jryjy_cache_'+SPACE_ID); location.reload();
+      localStorage.removeItem('jryjy_cache_'+SPACE_ID); 
+      location.reload();
     }
     return;
   }
-});
+}); // 👈 关键：这里必须是大括号和圆括号闭合，代表整个点击事件结束
 
 document.addEventListener('input',function(e){
   if(e.target&&e.target.id==='in-hex'){ const v=e.target.value.trim(); const pv=document.getElementById('hex-preview'); if(pv&&/^#[0-9a-fA-F]{6}$/.test(v))pv.style.background=v; }
