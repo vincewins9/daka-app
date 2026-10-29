@@ -192,7 +192,7 @@ async function boot() {
 
   if (!lastAuthTime || (now - parseInt(lastAuthTime)) > oneWeek) {
     const inputPwd = prompt("请输入本应用专属门禁密码：");
-    if (inputPwd !== "20240810") { // 这里可以改成你想要的密码
+    if (inputPwd?.trim() !== "20240810") { // 这里可以改成你想要的密码
       document.body.innerHTML = "<h1 style='text-align:center;margin-top:40vh;color:#8a8078;font-family:sans-serif'>密码错误，拒绝访问</h1>";
       return;
     }
