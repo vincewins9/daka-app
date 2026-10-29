@@ -170,7 +170,7 @@ async function refreshMembers(){
     const cachedUser = mems.find(m => m.id === DB.currentMemberId);
     if(cachedUser) {
       mine = cachedUser;
-      await supabase.from('members').update({ user_id: CURRENT_USER_ID }).eq('id', mine.id);
+           supabase.from('members').update({ user_id: CURRENT_USER_ID }).eq('id', mine.id).then(()=>{}).catch(()=>{});
     }
   }
   
@@ -243,18 +243,21 @@ async function boot() {
       UI.view = 'onboard'; render(); return;
     }
 
-    SPACE_ID = mem.space_id;
+       SPACE_ID = mem.space_id;
     loadLocalCache(); 
-    $('#loading-screen').style.display = 'none';
-    if(DB.space) { UI.view = 'main'; applyTheme(); render(); }
+    // ❌ 删除了提前的 render() 抢跑！
 
-       const { data: row } = await supabase.from('app_state').select('data').eq('space_id', SPACE_ID).single();
+    const { data: row } = await supabase.from('app_state').select('data').eq('space_id', SPACE_ID).single();
     if(row && row.data && Object.keys(row.data).length) {
       DB = Object.assign(def(), row.data);
-      DB.currentMemberId = null; // 强制置空，全权交给下面的 refreshMembers() 重新认领
+      DB.currentMemberId = null; 
       saveLocalCache();
     }
-    await refreshMembers();
+    
+    // ✅ 等身份认领完毕，再统一渲染！
+    await refreshMembers(); 
+
+    $('#loading-screen').style.display = 'none';
     UI.view = 'main'; applyTheme(); render(); subscribeRealtime();
   } catch(e) {
     console.error(e);
