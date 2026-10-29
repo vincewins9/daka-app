@@ -162,30 +162,27 @@ async function refreshMembers(){
   
   DB.members = mems.map(m=>({id:m.id, name:m.name, wechat:m.wechat, userId:m.user_id}));
   
-  // 1. 尝试正常匹配设备指纹
   let mine = mems.find(m => String(m.user_id).toLowerCase() === String(CURRENT_USER_ID).toLowerCase());
   
-  // 2. 匹配不上，尝试用本地缓存 ID 强绑
   if(!mine && DB.currentMemberId) {
     const cachedUser = mems.find(m => m.id === DB.currentMemberId);
     if(cachedUser) {
       mine = cachedUser;
-           supabase.from('members').update({ user_id: CURRENT_USER_ID }).eq('id', mine.id).then(()=>{}).catch(()=>{});
+      // 【关键】：去掉 await，在后台默默执行，就算网络卡了也不阻塞主线程！
+      supabase.from('members').update({ user_id: CURRENT_USER_ID }).eq('id', mine.id).then(()=>{}).catch(()=>{});
     }
   }
   
-  // 3. 如果只有1个人，强行认领
   if(!mine && mems.length === 1) {
     mine = mems[0];
-    supabase.from('members').update({ user_id: CURRENT_USER_ID }).eq('id', mine.id);
+    supabase.from('members').update({ user_id: CURRENT_USER_ID }).eq('id', mine.id).then(()=>{}).catch(()=>{});
   }
 
-  // 4. 彻底找不到（比如双人空间里，换了设备），直接踢回首页，绝不死循环！
   if(!mine) {
     alert("设备身份已变更，请重新用邀请码和密码登录。");
     localStorage.clear();
     location.reload();
-    throw new Error("需要重新登录"); 
+    return;
   }
 
   DB.currentMemberId = mine.id;
@@ -215,14 +212,13 @@ function subscribeRealtime() {
 }
 
 async function boot() {
-  // 🚨 门禁密码拦截（7天免密） 🚨
   const lastAuthTime = localStorage.getItem('gate_pwd_time');
-  const oneWeek = 7 * 24 * 60 * 60 * 1000; // 7天的毫秒数
+  const oneWeek = 7 * 24 * 60 * 60 * 1000; 
   const now = Date.now();
 
   if (!lastAuthTime || (now - parseInt(lastAuthTime)) > oneWeek) {
     const inputPwd = prompt("请输入本应用专属门禁密码：");
-    if (inputPwd?.trim() !== "20240810") { // 这里可以改成你想要的密码
+    if (inputPwd?.trim() !== "20240810") { 
       document.body.innerHTML = "<h1 style='text-align:center;margin-top:40vh;color:#8a8078;font-family:sans-serif'>密码错误，拒绝访问</h1>";
       return;
     }
@@ -243,9 +239,10 @@ async function boot() {
       UI.view = 'onboard'; render(); return;
     }
 
-       SPACE_ID = mem.space_id;
+    SPACE_ID = mem.space_id;
     loadLocalCache(); 
-    // ❌ 删除了提前的 render() 抢跑！
+    
+    // 【关键】：把提前渲染的代码彻底删掉，绝对不抢跑！
 
     const { data: row } = await supabase.from('app_state').select('data').eq('space_id', SPACE_ID).single();
     if(row && row.data && Object.keys(row.data).length) {
@@ -254,7 +251,7 @@ async function boot() {
       saveLocalCache();
     }
     
-    // ✅ 等身份认领完毕，再统一渲染！
+    // 【关键】：等身份彻底认领完，再关闭 loading 画面
     await refreshMembers(); 
 
     $('#loading-screen').style.display = 'none';
