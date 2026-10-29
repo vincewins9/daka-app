@@ -177,7 +177,7 @@ async function refreshMembers(){
   // 3. 如果只有1个人，强行认领
   if(!mine && mems.length === 1) {
     mine = mems[0];
-    await supabase.from('members').update({ user_id: CURRENT_USER_ID }).eq('id', mine.id);
+    supabase.from('members').update({ user_id: CURRENT_USER_ID }).eq('id', mine.id);
   }
 
   // 4. 彻底找不到（比如双人空间里，换了设备），直接踢回首页，绝不死循环！
@@ -949,11 +949,10 @@ document.addEventListener('click', async function(e){
     return; 
   }
 
-  if(a==='force-refresh'){
+   if(a==='force-refresh'){
     if(!SPACE_ID) return;
     showToast('正在重新连接...');
-    // 直接刷新页面，重新走一遍最严格的 boot() 认证流程，绝不卡死！
-    location.reload(); 
+    location.reload(); // 直接刷新网页，不走任何网络请求，绝不卡死
     return;
   }
     if(a==='logout'){
