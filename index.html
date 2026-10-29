@@ -145,7 +145,12 @@ function save(){
 async function flushSave() {
   if(!SPACE_ID || !CURRENT_USER_ID) return;
   const patch = pendingPatch; pendingPatch = {};
-  const { error } = await supabase.rpc('merge_app_state', { p_space_id: SPACE_ID, p_patch: patch });
+  
+  // 【修复】：深拷贝一份数据，删除 currentMemberId，绝不把“我是谁”传上云端
+  const safePatch = JSON.parse(JSON.stringify(patch));
+  delete safePatch.currentMemberId; 
+
+  const { error } = await supabase.rpc('merge_app_state', { p_space_id: SPACE_ID, p_patch: safePatch });
   if(error) { console.error('同步失败', error); pendingPatch = Object.assign(patch, pendingPatch); }
 }
 
@@ -165,9 +170,15 @@ function subscribeRealtime() {
   if(rtChannel) supabase.removeChannel(rtChannel);
   rtChannel = supabase.channel('state-'+SPACE_ID).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'app_state', filter: 'space_id=eq.'+SPACE_ID }, payload => {
     if(payload.new.updated_by === CURRENT_USER_ID) return;
-    const myId = DB.currentMemberId;
+    
+    // 【修复】：收到推送时，先备份自己的本地身份 ID
+    const myId = DB.currentMemberId; 
+    
     DB = Object.assign(def(), payload.new.data);
-    DB.currentMemberId = myId;
+    
+    // 【修复】：把云端数据覆盖后，重新把自己的 ID 塞回去
+    DB.currentMemberId = myId; 
+    
     saveLocalCache();
     refreshMembers().then(()=>{ applyTheme(); render(); });
   }).subscribe();
@@ -225,7 +236,7 @@ async function boot() {
 const COLORS=['#e8927c','#7c9bb8'];
 const mIdx=id=>DB.members.findIndex(m=>m.id===id);
 const mColor=id=>COLORS[mIdx(id)]||COLORS[0];
-const me=()=>DB.members.find(m=>m.id===DB.currentMemberId)||DB.members[0];
+const me=()=>DB.members.find(m=>m.id===DB.currentMemberId) || { name: '同步中...', id: 'none' };
 const partner=()=>DB.members.find(m=>m.id!==DB.currentMemberId);
 const hasMet=d=>DB.meetups.some(x=>x.date===d);
 function dSet(mid){const s=new Set();for(const c of DB.checkins)if(c.memberId===mid)s.add(c.date);return s;}
@@ -501,7 +512,7 @@ function renderSettings(){
   const isCustom=DB.theme&&DB.theme.startsWith('#');
   return '<div class="main"><div class="sec-title" style="margin-top:6px">空间</div><div class="card"><div class="row" data-action="edit-space"><span><span class="row-label">'+esc(DB.space?.name||'')+'</span><span class="row-sub" style="display:block">点击修改空间名称</span></span></div><div class="row"><span><span class="row-sub" style="display:block;margin-bottom:6px">邀请码</span><span class="invite-code">'+(DB.space?.inviteCode||'')+'</span></span><button class="row-value" data-action="copy-code" style="color:var(--coral);font-weight:600">复制</button></div>'+
     DB.members.map(x=>'<div class="row" data-action="edit-member" data-id="'+x.id+'"><span class="member-line"><span class="member-dot" style="background:'+mColor(x.id)+'"></span>'+esc(x.name)+(x.id===DB.currentMemberId?'（我）':'')+(x.wechat?'<span class="wechat-tag">微信 '+esc(x.wechat)+'</span>':'')+'</span><span class="row-chev">✎</span></div>').join('')+
-    (!p?'<div class="row"><span class="row-sub">还差一个人，把邀请码发给对方</span></div>':'')+'</div><div class="sec-title">主题配色</div><div class="card" style="padding:14px"><div class="theme-grid">'+themeList+'</div><div class="sec-title" style="margin:4px 2px 8px;font-size:12px">自定义颜色（十六进制）</div><div class="hex-row"><input id="in-hex" placeholder="#E8927C" maxlength="7" value="'+(isCustom?DB.theme.toUpperCase():'')+'"><div class="preview" id="hex-preview" style="background:'+(isCustom?DB.theme:'#e8927c')+'"></div></div><div class="quick" style="margin-top:10px"><button data-action="apply-hex">应用自定义颜色</button>'+(isCustom?'<button data-action="set-theme" data-key="coral">恢复默认</button>':'')+'</div></div><div class="sec-title">账号</div><div class="card"><button class="row" data-action="open-wechat"><span><span class="row-label">微信绑定</span><span class="row-sub" style="display:block">'+(m.wechat?'已关联 '+esc(m.wechat):'未绑定')+'</span></span><span class="row-chev">›</span></button><button class="row" data-action="switch-member"><span class="row-label">切换身份</span><span class="row-chev">›</span></button><button class="row" data-action="change-pwd"><span class="row-label" style="color:var(--coral)">修改我的密码</span><span class="row-chev">›</span></button></div><div class="sec-title">打卡模块</div><div class="card">'+modRows+'<button class="row" data-action="open-mod-editor"><span class="row-label" style="color:var(--coral)">＋ 新建模块</span></button>'+(arch.length?'<button class="row" data-action="open-archived"><span class="row-label">已归档（'+arch.length+'）</span><span class="row-chev">›</span></button>':'')+'</div><div class="sec-title">数据</div><div class="card"><button class="row" data-action="export-data"><span class="row-label">导出全部数据</span><span class="row-chev">›</span></button><button class="row" data-action="clear-data"><span class="row-label" style="color:#c9707f">清空本地数据</span><span class="row-chev">›</span></button></div><p class="footnote" style="margin-top:20px">今日宜加油 · 数据实时同步至云端<br>如需换设备，请重新用邀请码加入</p></div>';
+    (!p?'<div class="row"><span class="row-sub">还差一个人，把邀请码发给对方</span></div>':'')+'</div><div class="sec-title">主题配色</div><div class="card" style="padding:14px"><div class="theme-grid">'+themeList+'</div><div class="sec-title" style="margin:4px 2px 8px;font-size:12px">自定义颜色（十六进制）</div><div class="hex-row"><input id="in-hex" placeholder="#E8927C" maxlength="7" value="'+(isCustom?DB.theme.toUpperCase():'')+'"><div class="preview" id="hex-preview" style="background:'+(isCustom?DB.theme:'#e8927c')+'"></div></div><div class="quick" style="margin-top:10px"><button data-action="apply-hex">应用自定义颜色</button>'+(isCustom?'<button data-action="set-theme" data-key="coral">恢复默认</button>':'')+'</div></div><div class="sec-title">账号</div><div class="card"><button class="row" data-action="open-wechat"><span><span class="row-label">微信绑定</span><span class="row-sub" style="display:block">'+(m.wechat?'已关联 '+esc(m.wechat):'未绑定')+'</span></span><span class="row-chev">›</span></button><button class="row" data-action="switch-member"><span class="row-label">切换身份</span><span class="row-chev">›</span></button><button class="row" data-action="change-pwd"><span class="row-label" style="color:var(--coral)">修改我的密码</span><span class="row-chev">›</span></button></div><div class="sec-title">打卡模块</div><div class="card">'+modRows+'<button class="row" data-action="open-mod-editor"><span class="row-label" style="color:var(--coral)">＋ 新建模块</span></button>'+(arch.length?'<button class="row" data-action="open-archived"><span class="row-label">已归档（'+arch.length+'）</span><span class="row-chev">›</span></button>':'')+'</div><div class="sec-title">数据</div><div class="card"><button class="row" data-action="export-data"><span class="row-label">导出全部数据</span><span class="row-chev">›</span><button class="row" data-action="force-refresh"><span class="row-label" style="color:var(--coral)">刷新云端数据</span><span class="row-chev">›</span></button></button><button class="row" data-action="clear-data"><span class="row-label" style="color:#c9707f">清空本地数据</span><span class="row-chev">›</span></button></div><p class="footnote" style="margin-top:20px">今日宜加油 · 数据实时同步至云端<br>如需换设备，请重新用邀请码加入</p></div>';
 }
 function renderTabbar(){
   const tabs=[{k:'today',t:'今日',i:'🏠'},{k:'calendar',t:'日历',i:'📅'},{k:'stats',t:'战绩',i:'🏆'},{k:'badges',t:'徽章',i:'🎖️'},{k:'goals',t:'目标',i:'🎯'},{k:'lists',t:'清单',i:'✨'},{k:'settings',t:'设置',i:'⚙️'}];
@@ -813,6 +824,22 @@ document.addEventListener('click', async function(e){
 
   if(a==='copy-code'){ const code=DB.space.inviteCode; if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(code).then(function(){showToast('邀请码已复制');},function(){showToast('邀请码：'+code);}); else showToast('邀请码：'+code); return; }
   if(a==='export-data'){ const blob=new Blob([JSON.stringify(DB,null,2)],{type:'application/json'}); const url=URL.createObjectURL(blob); const link=document.createElement('a');link.href=url;link.download='jryjy-'+today()+'.json'; document.body.appendChild(link);link.click();document.body.removeChild(link); setTimeout(function(){URL.revokeObjectURL(url);},1000);showToast('已导出备份');return; }
+    if(a==='force-refresh'){
+    if(!SPACE_ID) return;
+    showToast('正在拉取最新数据...');
+    const { data: row } = await supabase.from('app_state').select('data').eq('space_id', SPACE_ID).single();
+    if(row && row.data) {
+      DB = Object.assign(def(), row.data);
+      DB.currentMemberId = null; // 强制清空旧身份
+      await refreshMembers();    // 重新从 members 表认领真正的自己
+      applyTheme(); 
+      render();
+      showToast('数据已刷新');
+    }
+    return;
+  }
+  
+  if(a==='clear-data'){
   if(a==='clear-data'){
     if(confirm('确定清空所有云端和本地数据吗？这个操作无法撤销。')){
       if(SPACE_ID) await supabase.from('app_state').delete().eq('space_id', SPACE_ID);
