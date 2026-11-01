@@ -162,26 +162,32 @@ async function refreshMembers(){
   
   DB.members = mems.map(m=>({id:m.id, name:m.name, wechat:m.wechat, userId:m.user_id}));
   
+  // 1. 严格根据当前设备的真实登录 ID 匹配
   let mine = mems.find(m => String(m.user_id).toLowerCase() === String(CURRENT_USER_ID).toLowerCase());
   
+  // 2. 如果找不到，看看本地缓存里的 ID 在不在成员列表里
   if(!mine && DB.currentMemberId) {
     const cachedUser = mems.find(m => m.id === DB.currentMemberId);
-    if(cachedUser) {
+    // 【绝对关键】：只有这个账号从未被绑定过 (user_id为空)，才允许设备绑定
+    // 只要它绑过别人的 user_id，就绝对不抢！
+    if(cachedUser && !cachedUser.user_id) {
       mine = cachedUser;
-      // 【关键】：去掉 await，在后台默默执行，就算网络卡了也不阻塞主线程！
+      // 后台静默绑定，不卡主线程
       supabase.from('members').update({ user_id: CURRENT_USER_ID }).eq('id', mine.id).then(()=>{}).catch(()=>{});
     }
   }
   
-  if(!mine && mems.length === 1) {
-    mine = mems[0];
-    supabase.from('members').update({ user_id: CURRENT_USER_ID }).eq('id', mine.id).then(()=>{}).catch(()=>{});
+  if(!mine) {
+    // 【关键容错】：如果网络波动没匹配上，但本地已经有身份，千万别弹窗，直接用本地的
+    if(DB.currentMemberId) {
+      const cachedUser = mems.find(m => m.id === DB.currentMemberId);
+      if(cachedUser) { mine = cachedUser; }
+    }
   }
 
   if(!mine) {
-    alert("设备身份已变更，请重新用邀请码和密码登录。");
-    localStorage.clear();
-    location.reload();
+    // 如果实在找不到，且本地也没有，才报错
+    alert("当前设备未绑定身份，请重新用邀请码和密码登录。");
     return;
   }
 
@@ -244,10 +250,14 @@ async function boot() {
     
     // 【关键】：把提前渲染的代码彻底删掉，绝对不抢跑！
 
-    const { data: row } = await supabase.from('app_state').select('data').eq('space_id', SPACE_ID).single();
+       const { data: row } = await supabase.from('app_state').select('data').eq('space_id', SPACE_ID).single();
     if(row && row.data && Object.keys(row.data).length) {
+      // 先读取本地缓存，记住自己是谁
+      let localId = null;
+      try { const c = localStorage.getItem('jryjy_cache_'+SPACE_ID); if(c) localId = JSON.parse(c).currentMemberId; } catch(e){}
+      
       DB = Object.assign(def(), row.data);
-      DB.currentMemberId = null; 
+      DB.currentMemberId = localId; // 恢复本地记忆，绝不轻易失忆！
       saveLocalCache();
     }
     
@@ -763,8 +773,12 @@ document.addEventListener('click', async function(e){
       if(e1) throw new Error(e1.message);
 
       SPACE_ID = spId; loadLocalCache();
-      const { data: row } = await supabase.from('app_state').select('data').eq('space_id', SPACE_ID).single();
-      if(row && row.data) { DB = Object.assign(def(), row.data); saveLocalCache(); }
+     const { data: row } = await supabase.from('app_state').select('data').eq('space_id', SPACE_ID).single();
+      if(row && row.data) { 
+        DB = Object.assign(def(), row.data); 
+        DB.currentMemberId = null; // 新设备加入，必须清空旧身份，防止变成对方
+        saveLocalCache(); 
+      }  
       await refreshMembers(); UI.view='main'; UI.tab='today'; applyTheme(); render(); subscribeRealtime();
     }catch(err){ alert(err.message); btn.textContent='进入空间'; btn.disabled=false; }
     return;
