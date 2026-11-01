@@ -716,8 +716,7 @@ document.addEventListener('click', async function(e){
       SPACE_ID = sp.id;
       const initial = def();
       initial.space = { id: sp.id, name: sn||'我们的空间', inviteCode: code, togetherSince: today() };
-      initial.members = [{ id: mem.id, name: nm, joinedAt: Date.now(), userId: CURRENT_USER_ID }];
-      initial.currentMemberId = mem.id;
+
       initial.modules = [
         {id:uid(),name:'健身运动',icon:'💪',color:'#e8927c',metric:{type:'number',label:'时长',unit:'分钟',hasSubtype:true},status:'active',sort:0},
         {id:uid(),name:'早睡打卡',icon:'🌙',color:'#7c9bb8',metric:{type:'time',isRoutine:true},status:'active',sort:1},
