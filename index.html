@@ -156,44 +156,35 @@ async function flushSave() {
 }
 async function refreshMembers(forcedName){
   if(!SPACE_ID) return;
-  console.log("正在从数据库拉取成员名单...");
-  
-  const { data: mems, error } = await supabase.from('members').select('id, name, user_id').eq('space_id', SPACE_ID);
-  
-  if (error) {
-    alert("拉取名单失败！错误信息：\n" + error.message);
-    return;
-  }
-  
-  if (!mems || mems.length === 0) {
-    alert("数据库里查不到你们的名字！请确认数据还在不在。");
-    return;
-  }
+  try {
+    const { data: mems } = await supabase.from('members').select('id, user_id, name, wechat').eq('space_id', SPACE_ID);
+    if(mems && mems.length > 0) {
+      // 强行把真实的两人名单塞进去
+      DB.members = mems.map(m=>({id:m.id, name:m.name, wechat:m.wechat, userId:m.user_id}));
+      
+      // 如果是在登录界面输入了名字（比如谌莹）
+      if (forcedName) {
+        const match = DB.members.find(m => m.name === forcedName);
+        if (match) {
+          DB.currentMemberId = match.id;
+          // 强制把她的设备绑定在这个名字上
+          supabase.from('members').update({ user_id: CURRENT_USER_ID }).eq('id', match.id).then(()=>{}).catch(()=>{});
+          saveLocalCache();
+          return;
+        }
+      }
 
-  // 直接用数据库里的数据覆盖内存
-  DB.members = mems.map(m=>({id:m.id, name:m.name, userId:m.user_id}));
-  
-  // 强制指定当前身份
-  let mine = null;
-  if (forcedName) {
-    // 如果刚输入了名字（她登录的情况），死磕这个名字
-    mine = DB.members.find(m => m.name === forcedName);
-  } else {
-    // 如果是日常刷新，按设备的 user_id 找
-    mine = DB.members.find(m => String(m.user_id).toLowerCase() === String(CURRENT_USER_ID).toLowerCase());
+      // 如果只是日常刷新，本地身份丢了，就按设备找；找不到就默认选第一个
+      if (!DB.currentMemberId || !DB.members.some(m => m.id === DB.currentMemberId)) {
+        let mine = DB.members.find(m => String(m.user_id).toLowerCase() === String(CURRENT_USER_ID).toLowerCase());
+        if (!mine) mine = DB.members[0];
+        DB.currentMemberId = mine.id;
+      }
+      saveLocalCache();
+    }
+  } catch (e) {
+    console.error("网络异常", e);
   }
-
-  // 如果都找不到，默认选第一个，防止卡死
-  if (!mine) mine = DB.members[0];
-
-  DB.currentMemberId = mine.id;
-  
-  // 如果按名字找到了她，强行把她的名字绑定到她现在的设备上
-  if (forcedName && mine.name === forcedName) {
-    supabase.from('members').update({ user_id: CURRENT_USER_ID }).eq('id', mine.id).then(()=>{}).catch(()=>{});
-  }
-
-  saveLocalCache();
 }
 
 
@@ -278,8 +269,13 @@ const mIdx=id=>DB.members.findIndex(m=>m.id===id);
 const mColor=id=>COLORS[mIdx(id)]||COLORS[0];
 const me=()=>{
   let m = DB.members.find(x=>x.id===DB.currentMemberId);
-  if (!m && DB.members.length > 0) { m = DB.members[0]; DB.currentMemberId = m.id; }
-  return m || { name: '同步中...', id: 'none' };
+  // 如果发现身份丢了，但名单里有人，直接强行选第一个（防卡同步中）
+  if (!m && DB.members.length > 0) { 
+    m = DB.members[0]; 
+    DB.currentMemberId = m.id; 
+    saveLocalCache(); 
+  }
+  return m || { name: '请选择身份', id: 'none' };
 };
 const partner=()=>DB.members.find(m=>m.id!==DB.currentMemberId);
 const hasMet=d=>DB.meetups.some(x=>x.date===d);
@@ -690,11 +686,11 @@ function drawerModule(d){
   return '<h3>'+(isNew?'新建打卡模块':'编辑模块')+'</h3><p class="d-sub">'+(isNew?'名字和图标之后都能改':'修改不会影响历史记录')+'</p><label class="field"><span>名称</span><input id="in-mod-name" maxlength="12" value="'+esc(mod?mod.name:'')+'" placeholder="比如：晨跑"></label><div class="field"><span>图标</span><div class="quick">'+icons.map(i=>'<button class="'+(i===icon?'sel':'')+'" data-action="pick-icon" data-icon="'+i+'" style="font-size:16px">'+i+'</button>').join('')+'</div></div><div class="field"><span>颜色</span><div class="quick">'+colors.map(c=>'<button data-action="pick-color" data-color="'+c+'" style="width:30px;height:30px;border-radius:50%;background:'+c+';padding:0;'+(c===color?'box-shadow:0 0 0 2px #fff,0 0 0 4px '+c:'')+'"></button>').join('')+'</div></div>'+(isNew?'<div class="field"><span>记录方式</span><div class="quick"><button class="'+(mtype==='number'?'sel':'')+'" data-action="pick-type" data-type="number">数值（时长/距离）</button><button class="'+(mtype==='boolean'?'sel':'')+'" data-action="pick-type" data-type="boolean">仅完成</button><button class="'+(mtype==='time'?'sel':'')+'" data-action="pick-type" data-type="time">时间（早睡/熬夜）</button></div></div><div id="metric-fields" style="'+(mtype==='boolean'||mtype==='time'?'display:none':'')+'"><div class="field"><span>数值含义</span><div style="display:flex;gap:8px"><input id="in-metric-label" maxlength="6" value="时长" placeholder="时长" style="flex:1;background:#fff;border:1.5px solid var(--line);border-radius:12px;padding:11px 13px;font-size:14px"><input id="in-metric-unit" maxlength="4" value="分钟" placeholder="分钟" style="flex:1;background:#fff;border:1.5px solid var(--line);border-radius:12px;padding:11px 13px;font-size:14px"></div></div></div>':'')+'<div class="d-actions"><button class="btn primary" data-action="save-module" data-id="'+(mod?mod.id:'')+'">'+(isNew?'创建':'保存')+'</button>'+(mod?'<button class="btn warn" data-action="delete-module" data-id="'+mod.id+'">删除模块</button>':'')+(mod?'<button class="btn ghost" data-action="archive-module" data-id="'+mod.id+'">归档（历史保留）</button>':'')+'<button class="btn ghost" data-action="close-drawer">取消</button></div>';
 }
 function drawerMember(){ 
-  const list = DB.members.map(m=>'<button class="row" data-action="set-member" data-id="'+m.id+'"><span class="member-line"><span class="member-dot" style="background:'+mColor(m.id)+'"></span>'+esc(m.name)+(m.wechat?'<span class="wechat-tag">微信</span>':'')+'</span>'+(m.id===DB.currentMemberId?'<span class="row-value" style="color:var(--coral)">当前</span>':'')+'</button>').join('');
+  const list = DB.members.map(m=>'<button class="row" data-action="set-member" data-id="'+m.id+'"><span class="member-line"><span class="member-dot" style="background:'+mColor(m.id)+'"></span>'+esc(m.name)+'</span>'+(m.id===DB.currentMemberId?'<span class="row-value" style="color:var(--coral)">当前</span>':'')+'</button>').join('');
   
-  return '<h3>切换身份</h3><p class="d-sub">两个人共用一台设备时使用</p><div class="card">'+
-    (list || '<div class="row"><span class="row-sub">网络同步失败，暂无本地名单，请点击下方按钮刷新</span></div>')+
-    '</div><button class="btn ghost" data-action="force-refresh" style="margin-bottom:8px;">重新从云端同步名单</button><button class="btn ghost" data-action="close-drawer">关闭</button>'; 
+  return '<h3>选择你的身份</h3><p class="d-sub">点击名字即可切换，各自独立</p><div class="card">'+
+    (list || '<div class="row"><span class="row-sub">名单为空，请检查网络后点击下方重试</span></div>')+
+    '</div><button class="btn ghost" data-action="real-refresh-members" style="margin-bottom:8px;">重新获取名单</button><button class="btn ghost" data-action="close-drawer">关闭</button>'; 
 }
 function drawerWechat(){ const m=me(); return '<h3>微信绑定</h3><p class="d-sub">当前为本地单文件演示</p><div class="card" style="padding:13px 15px;margin-bottom:14px"><p style="font-size:12px;color:var(--ink2);line-height:1.7;margin:0">真正的微信登录需要服务器完成 OAuth 授权。这里可以先录入微信昵称作为展示标识。</p></div><label class="field"><span>微信昵称</span><input id="in-wechat" maxlength="20" value="'+esc(m.wechat||'')+'" placeholder="比如：lin_27"></label><div class="d-actions"><button class="btn primary" data-action="save-wechat">保存</button><button class="btn ghost" data-action="close-drawer">取消</button></div>'; }
 function drawerHistory(){ const mods=DB.modules.filter(x=>x.status==='active'); if(!mods.length)return '<h3>导入历史打卡</h3><div class="empty">还没有打卡模块</div><button class="btn ghost" data-action="close-drawer">关闭</button>'; return '<h3>导入历史打卡</h3><p class="d-sub">从某一天到今天之前，每天补一条</p><label class="field"><span>选择模块</span><select id="in-h-mod">'+mods.map(x=>'<option value="'+x.id+'">'+(x.icon||'')+' '+esc(x.name)+'</option>').join('')+'</select></label><label class="field"><span>从哪天开始</span><input id="in-h-date" type="date" value="'+addD(today(),-30)+'" max="'+addD(today(),-1)+'"></label><p class="d-sub" style="margin-top:-4px">导入的记录标记为「导入」，不会触发庆祝弹窗。</p><div class="d-actions"><button class="btn primary" data-action="do-history">导入</button><button class="btn ghost" data-action="close-drawer">取消</button></div>'; }
