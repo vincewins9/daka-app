@@ -724,8 +724,12 @@ document.addEventListener('click', async function(e){
         {id:uid(),name:'早起咯',icon:'☀️',color:'#f6c45b',metric:{type:'time',isRoutine:true},status:'active',sort:3},
         {id:uid(),name:'又赖床了',icon:'🛌',color:'#9b8a90',metric:{type:'time',isRoutine:true},status:'active',sort:4}
       ];
-      await supabase.from('app_state').insert({ space_id: sp.id, data: initial, updated_by: CURRENT_USER_ID });
-      DB = initial; saveLocalCache(); UI.view='main'; UI.tab='today'; applyTheme(); render(); subscribeRealtime();
+           await supabase.from('app_state').insert({ space_id: sp.id, data: initial, updated_by: CURRENT_USER_ID });
+      DB = initial; saveLocalCache(); 
+      
+      await refreshMembers(); // 👈 补上这句：建完空间，立刻去表里拉取真实的成员名单！
+
+      UI.view='main'; UI.tab='today'; applyTheme(); render(); subscribeRealtime();
     }catch(err){ alert('创建失败: '+err.message); btn.textContent='创建'; btn.disabled=false; }
     return;
   }
