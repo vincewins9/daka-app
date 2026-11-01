@@ -51,12 +51,48 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer;pad
 
 <script type="module">
 
-// 换成更稳定的 jsdelivr 源，防止你之前的加载报错
-import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm'
+// 版本号：设置页最下方会显示，手机上看到 v3.0 才说明跑的是新代码（防止旧缓存假装新代码）
+const APP_VERSION = 'v3.0';
 // 换成你绑定的自定义域名（如果 sb.betteragain.cn 还没变绿，可以先用右边的 workers.dev 网址测试）
 const SUPABASE_URL = 'https://sb.betteragain.cn';  
 const SUPABASE_ANON_KEY = 'sb_publishable_EDbc_4y4rRQ44uOusaxk4w_Pb_LSQVm';
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY); 
+let supabase = null;
+// CDN 动态加载 + 自动回退：任何一个源被卡就自动换下一个，避免整页永远卡在"正在连接空间"
+async function initSupabase(){
+  const urls=[
+    'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm',
+    'https://esm.sh/@supabase/supabase-js@2',
+    'https://unpkg.com/@supabase/supabase-js@2/dist/module/index.js'
+  ];
+  let lastErr=null;
+  for(const u of urls){
+    try{ const m=await import(u); supabase=m.createClient(SUPABASE_URL,SUPABASE_ANON_KEY); return; }
+    catch(e){ lastErr=e; console.warn('CDN 加载失败，自动换下一个源:',u); }
+  }
+  throw new Error('Supabase 库的三个备用源都加载失败，请检查网络。'+(lastErr?(' 最后错误: '+lastErr.message):''));
+}
+
+// ===== 三码合一令牌：姓名＋密码＋邀请码 → token，登录即锁定为这个姓名的账号 =====
+const SESSION_KEY='jryjy_session_v3';
+function hashStr(s){let h=5381;for(let i=0;i<s.length;i++){h=((h<<5)+h+s.charCodeAt(i))>>>0;}return h.toString(36);}
+function writeSession(code,name,pwd){
+  try{
+    const raw=JSON.stringify({c:String(code).toUpperCase(),n:name,p:pwd});
+    localStorage.setItem(SESSION_KEY, btoa(unescape(encodeURIComponent(raw)))+'.'+hashStr(raw));
+  }catch(e){}
+}
+function readSession(){
+  try{
+    const t=localStorage.getItem(SESSION_KEY); if(!t)return null;
+    const i=t.lastIndexOf('.'); if(i<0)return null;
+    const raw=decodeURIComponent(escape(atob(t.slice(0,i))));
+    if(hashStr(raw)!==t.slice(i+1))return null; // 令牌被改动过，作废
+    const o=JSON.parse(raw);
+    if(!o.c||!o.n||!o.p)return null;
+    return {code:String(o.c).toUpperCase(),name:o.n,pwd:o.p};
+  }catch(e){return null;}
+}
+function clearSession(){ try{localStorage.removeItem(SESSION_KEY);}catch(e){} }
 
 
 const $=(s,r=document)=>r.querySelector(s);
@@ -149,45 +185,24 @@ async function flushSave() {
   
   const safePatch = JSON.parse(JSON.stringify(patch));
   delete safePatch.currentMemberId; 
-  // 允许上传 members，这样不管网络怎么卡，打卡数据里都自带了一份名单
+  delete safePatch.members; // 名单只认 members 表，不再写进 app_state，防止旧脏名单反复复活
 
   const { error } = await supabase.rpc('merge_app_state', { p_space_id: SPACE_ID, p_patch: safePatch });
   if(error) { console.error('同步失败', error); pendingPatch = Object.assign(patch, pendingPatch); }
 }
-async function refreshMembers(forcedName){
-  if(!SPACE_ID) return;
-  
+async function refreshMembers(){
+  if(!SPACE_ID || !supabase) return;
   try {
     const { data: mems, error } = await supabase.from('members').select('id, user_id, name, wechat').eq('space_id', SPACE_ID);
     if(!error && mems && mems.length > 0) {
-      // 如果网络通畅，就用数据库里的真实名单
       DB.members = mems.map(m=>({id:m.id, name:m.name, wechat:m.wechat, userId:m.user_id}));
     }
   } catch (e) {
-    console.warn("网络异常", e);
+    console.warn('拉取成员名单失败', e);
   }
-
-  // 【绝对兜底】：如果因为网络卡了拉不到名单，或者拉到的只有一个人，直接强行补全！
-  if (!DB.members || DB.members.length === 0) {
-    DB.members = [
-      { id: 'fallback_1', name: '蒋祺', userId: 'fallback_1' },
-      { id: 'fallback_2', name: '谌莹', userId: 'fallback_2' }
-    ];
-  }
-
-  // 自动认主逻辑
-  let mine = null;
-  if (forcedName) {
-    // 如果她输入了谌莹，强行找谌莹
-    mine = DB.members.find(m => m.name === forcedName);
-  } else {
-    // 如果没输名字，按设备ID找，或者直接用本地的
-    mine = DB.members.find(m => String(m.user_id).toLowerCase() === String(CURRENT_USER_ID).toLowerCase());
-  }
-  if (!mine) mine = DB.members[0];
-
-  DB.currentMemberId = mine.id;
-  saveLocalCache();
+  // 注意：这里不再写死任何兜底名单、不再"自动认主"。
+  // 当前身份一律由登录流程（三码验证）写入的 DB.currentMemberId 决定，
+  // 绝不再默认顶替成第一个人——那正是"她登录进去却显示我名字"的根源之一。
 }
 
 
@@ -209,14 +224,47 @@ function subscribeRealtime() {
   }).subscribe();
 }
 
+async function enterSpace(spaceId, memberId, myName){
+  SPACE_ID = spaceId;
+  DB = def();
+  loadLocalCache();
+  // 本地缓存里的名单先清一遍脏数据（历史版本写死的 fallback 名单一律丢弃）
+  DB.members = (DB.members||[]).filter(m=>m.id && !String(m.id).startsWith('fallback'));
+  const cachedMems = DB.members;
+  try{
+    const { data: row } = await supabase.from('app_state').select('data').eq('space_id', spaceId).maybeSingle();
+    if(row && row.data && Object.keys(row.data).length){
+      // 只取打卡、日记等业务数据；云端数据里残留的旧名单一律不用
+      DB = Object.assign(def(), row.data);
+    }
+  }catch(e){ console.error('拉取云端数据失败', e); }
+  DB.members = cachedMems;
+  await refreshMembers(); // members 表才是名单的唯一权威来源
+  if(memberId && !DB.members.find(m=>m.id===memberId)) DB.members.push({id:memberId, name:myName});
+  DB.currentMemberId = memberId;
+  saveLocalCache();
+}
+
+// 用三码令牌自动登录：邀请码找空间 → 姓名+密码找账号 → 对上就进入
+async function tryAutoLogin(sess){
+  const { data: sp, error: e1 } = await supabase.from('spaces').select('id').eq('invite_code', sess.code).maybeSingle();
+  if(e1) throw e1;
+  if(!sp) return false;
+  const { data: mem, error: e2 } = await supabase.from('members').select('id, password').eq('space_id', sp.id).eq('name', sess.name).maybeSingle();
+  if(e2) throw e2;
+  if(!mem || mem.password !== sess.pwd) return false;
+  await enterSpace(sp.id, mem.id, sess.name);
+  return true;
+}
+
 async function boot() {
   const lastAuthTime = localStorage.getItem('gate_pwd_time');
-  const oneWeek = 7 * 24 * 60 * 60 * 1000; 
+  const oneWeek = 7 * 24 * 60 * 60 * 1000;
   const now = Date.now();
 
   if (!lastAuthTime || (now - parseInt(lastAuthTime)) > oneWeek) {
     const inputPwd = prompt("请输入本应用专属门禁密码：");
-    if (inputPwd?.trim() !== "20240810") { 
+    if (inputPwd?.trim() !== "20240810") {
       document.body.innerHTML = "<h1 style='text-align:center;margin-top:40vh;color:#8a8078;font-family:sans-serif'>密码错误，拒绝访问</h1>";
       return;
     }
@@ -224,62 +272,50 @@ async function boot() {
   }
 
   try {
+    const loadingText = $('#loading-text');
+    if(loadingText) loadingText.textContent = '正在加载组件...';
+    await initSupabase();
+
+    if(loadingText) loadingText.textContent = '正在连接云端...';
     const { data: { user } } = await supabase.auth.getUser();
     if(!user) {
       const { data, error } = await supabase.auth.signInAnonymously();
       if(error) throw error;
       CURRENT_USER_ID = data.user.id;
     } else { CURRENT_USER_ID = user.id; }
+    // 匿名身份只用作数据库访问凭证，不再用来判定"我是谁"——
+    // 设备换人、两人共用浏览器都不再串号，身份只由下面的三码令牌决定
 
-         const { data: mem } = await supabase.from('members').select('space_id').eq('user_id', CURRENT_USER_ID).maybeSingle();
-    const { data: mem } = await supabase.from('members').select('space_id').eq('user_id', CURRENT_USER_ID).maybeSingle();
-    if(!mem) {
+    if(loadingText) loadingText.textContent = '正在验证账号...';
+    const sess = readSession();
+    if(!sess){
       $('#loading-screen').style.display = 'none';
-      UI.view = 'onboard'; render(); return; 
+      UI.view = 'onboard'; UI.onboardStep = 'choose'; render();
+      return;
     }
-      SPACE_ID = mem.space_id;
-    loadLocalCache(); 
-    
-    // 只要本地有名字，立刻渲染，不让用户干等
-    if (DB.members && DB.members.length > 0) {
-       $('#loading-screen').style.display = 'none';
-       UI.view = 'main'; applyTheme(); render(); 
+    const ok = await tryAutoLogin(sess);
+    if(!ok){
+      // 三码对不上（改过密码/名字/邀请码），令牌作废，回登录页重新登录
+      clearSession();
+      $('#loading-screen').style.display = 'none';
+      UI.view = 'onboard'; UI.onboardStep = 'login'; UI.tmp.loginMsg = '登录信息已失效，请重新登录'; render();
+      return;
     }
-
-      try {
-      const { data: row } = await supabase.from('app_state').select('data').eq('space_id', SPACE_ID).single();
-      if(row && row.data && Object.keys(row.data).length) {
-        // 只取打卡、日记等数据，彻底抛弃里面可能残留的旧名单
-        DB = Object.assign(def(), row.data);
-        delete DB.members; 
-      }
-      
-      // 直接去 members 表拉活人
-      await refreshMembers(); 
-      
-    } catch(e) { console.error("拉取云端数据失败", e); }
 
     $('#loading-screen').style.display = 'none';
     UI.view = 'main'; applyTheme(); render(); subscribeRealtime();
   } catch(e) {
     console.error(e);
-    $('#loading-screen').innerHTML = '<div style="color:red;padding:20px;text-align:center;font-size:14px;line-height:1.5">连接失败，请刷新重试<br><br>错误信息：<br>'+e.message+'<br><br><span style="font-size:12px;color:#888">(请检查是否在 Supabase 执行了 SQL 语句并开启了匿名登录)</span></div>';
+    $('#loading-screen').innerHTML = '<div style="color:red;padding:20px;text-align:center;font-size:14px;line-height:1.5">连接失败，请刷新重试<br><br>错误信息：<br>'+e.message+'<br><br><span style="font-size:12px;color:#888">(请检查网络，以及 Supabase 是否执行过 SQL 语句并开启了匿名登录)</span></div>';
   }
 }
 
 const COLORS=['#e8927c','#7c9bb8'];
 const mIdx=id=>DB.members.findIndex(m=>m.id===id);
 const mColor=id=>COLORS[mIdx(id)]||COLORS[0];
-const me=()=>{
-  let m = DB.members.find(x=>x.id===DB.currentMemberId);
-  // 如果发现身份丢了，但名单里有人，直接强行选第一个（防卡同步中）
-  if (!m && DB.members.length > 0) { 
-    m = DB.members[0]; 
-    DB.currentMemberId = m.id; 
-    saveLocalCache(); 
-  }
-  return m || { name: '请选择身份', id: 'none' };
-};
+const me=()=>DB.members.find(x=>x.id===DB.currentMemberId)||{name:'身份失效',id:'none'};
+// 不再"找不到身份就顶替成第一个人"——那正是"她登录进去却显示我名字"的帮凶；
+// 正常登录后身份一定有效，万一失效就明说，引导重新登录。
 const partner=()=>DB.members.find(m=>m.id!==DB.currentMemberId);
 const hasMet=d=>DB.meetups.some(x=>x.date===d);
 function dSet(mid){const s=new Set();for(const c of DB.checkins)if(c.memberId===mid)s.add(c.date);return s;}
@@ -330,23 +366,43 @@ function showToast(msg){
 function renderOnboard(){
   if(UI.onboardStep==='choose'){
     return '<div class="onboard"><div class="brand"><div class="brand-mark">加油</div><h1>今日宜加油</h1><p>两个人，各自坚持，一起往前</p></div>'+
-    '<div class="onboard-actions"><button class="btn primary" data-action="goto-create">创建我们的空间</button>'+
-    '<button class="btn ghost" data-action="goto-join">用邀请码加入 / 找回</button></div></div>';
+    '<div class="onboard-actions"><button class="btn primary" data-action="goto-create">创建账号（创建我们的空间）</button>'+
+    '<button class="btn ghost" data-action="goto-join">用邀请码注册加入</button>'+
+    '<button class="btn ghost" data-action="goto-login">登录账号</button></div>'+
+    '<p class="footnote">创建空间的人不用邀请码，系统会自动生成一个发给对方；<br>对方填邀请码注册加入，两个人就在同一个空间。<br>之后都用「邀请码＋姓名＋密码」三码登录，各自是各自的账号。</p></div>';
   }
   if(UI.onboardStep==='create'){
     return '<div class="onboard"><button class="back" data-action="onboard-choose">←</button>'+
-    '<h2>创建空间</h2><p class="sub">设置你的专属账号</p>'+
-    '<label class="field"><span>空间名称</span><input id="in-space" placeholder="比如：我们的家" maxlength="20"></label>'+
+    '<h2>创建账号</h2><p class="sub">你是第一个开创空间的人，不需要邀请码</p>'+
+    '<label class="field"><span>空间名称（可选）</span><input id="in-space" placeholder="比如：我们的家" maxlength="20"></label>'+
     '<label class="field"><span>你的名字（账号）</span><input id="in-name" placeholder="比如：小林" maxlength="12"></label>'+
-    '<label class="field"><span>设置密码（换设备必备）</span><input id="in-pwd" type="password" placeholder="设置一个密码" maxlength="20"></label>'+
+    '<label class="field"><span>设置密码</span><input id="in-pwd" type="password" placeholder="和名字一起，登录时使用" maxlength="20"></label>'+
     '<button class="btn primary" data-action="do-create">创建</button></div>';
   }
+  if(UI.onboardStep==='created'){
+    return '<div class="onboard"><h2 style="text-align:center;margin-top:30px">🎉 创建成功</h2>'+
+    '<p class="sub" style="text-align:center">把这个邀请码发给 TA，对方填码注册后就和你在同一个空间</p>'+
+    '<div class="card" style="padding:22px 16px;text-align:center;margin-bottom:18px"><div style="font-size:12px;color:var(--ink2);margin-bottom:8px">你们的专属邀请码</div>'+
+    '<div class="invite-code" style="font-size:30px">'+esc(UI.tmp.createdCode||'')+'</div>'+
+    '<button class="btn soft" style="margin-top:14px" data-action="copy-code2">复制邀请码</button></div>'+
+    '<button class="btn primary" data-action="enter-main">进入空间</button></div>';
+  }
+  if(UI.onboardStep==='join'){
+    return '<div class="onboard"><button class="back" data-action="onboard-choose">←</button>'+
+    '<h2>用邀请码注册加入</h2><p class="sub">填对方发你的邀请码，注册后进入同一个空间</p>'+
+    '<label class="field"><span>邀请码</span><input id="in-code" placeholder="如 A3K9QZ" maxlength="6" style="text-transform:uppercase;letter-spacing:.2em;font-size:18px"></label>'+
+    '<label class="field"><span>你的名字（账号）</span><input id="in-name2" placeholder="比如：小周" maxlength="12"></label>'+
+    '<label class="field"><span>设置你的密码</span><input id="in-pwd2" type="password" placeholder="和名字一起，登录时使用" maxlength="20"></label>'+
+    '<button class="btn primary" data-action="do-join">注册并进入空间</button></div>';
+  }
+  // login：三码合一登录
+  const msg=UI.tmp.loginMsg?'<div class="card" style="padding:10px 14px;margin-bottom:14px;font-size:13px;color:#c9707f;text-align:center">'+esc(UI.tmp.loginMsg)+'</div>':'';
   return '<div class="onboard"><button class="back" data-action="onboard-choose">←</button>'+
-  '<h2>加入 / 找回空间</h2><p class="sub">输入邀请码和你的专属信息</p>'+
+  '<h2>登录账号</h2><p class="sub">三码合一：邀请码＋姓名＋密码，登录即锁定这个账号</p>'+msg+
   '<label class="field"><span>邀请码</span><input id="in-code" placeholder="如 A3K9QZ" maxlength="6" style="text-transform:uppercase;letter-spacing:.2em;font-size:18px"></label>'+
-  '<label class="field"><span>你的名字（账号）</span><input id="in-name2" placeholder="比如：小周" maxlength="12"></label>'+
-  '<label class="field"><span>你的密码</span><input id="in-pwd2" type="password" placeholder="输入密码核实身份" maxlength="20"></label>'+
-  '<button class="btn primary" data-action="do-join">进入空间</button></div>';
+  '<label class="field"><span>你的名字（账号）</span><input id="in-name2" placeholder="比如：小林" maxlength="12"></label>'+
+  '<label class="field"><span>密码</span><input id="in-pwd2" type="password" placeholder="你设置的密码" maxlength="20"></label>'+
+  '<button class="btn primary" data-action="do-login">登录</button></div>';
 }
 function renderMain(){
   if(UI.tab==='today')return renderToday();
@@ -635,7 +691,7 @@ function renderSettings(){
   const isCustom=DB.theme&&DB.theme.startsWith('#');
   return '<div class="main"><div class="sec-title" style="margin-top:6px">空间</div><div class="card"><div class="row" data-action="edit-space"><span><span class="row-label">'+esc(DB.space?.name||'')+'</span><span class="row-sub" style="display:block">点击修改空间名称</span></span></div><div class="row"><span><span class="row-sub" style="display:block;margin-bottom:6px">邀请码</span><span class="invite-code">'+(DB.space?.inviteCode||'')+'</span></span><button class="row-value" data-action="copy-code" style="color:var(--coral);font-weight:600">复制</button></div>'+
     DB.members.map(x=>'<div class="row" data-action="edit-member" data-id="'+x.id+'"><span class="member-line"><span class="member-dot" style="background:'+mColor(x.id)+'"></span>'+esc(x.name)+(x.id===DB.currentMemberId?'（我）':'')+(x.wechat?'<span class="wechat-tag">微信 '+esc(x.wechat)+'</span>':'')+'</span><span class="row-chev">✎</span></div>').join('')+
-    (!p?'<div class="row"><span class="row-sub">还差一个人，把邀请码发给对方</span></div>':'')+'</div><div class="sec-title">主题配色</div><div class="card" style="padding:14px"><div class="theme-grid">'+themeList+'</div><div class="sec-title" style="margin:4px 2px 8px;font-size:12px">自定义颜色（十六进制）</div><div class="hex-row"><input id="in-hex" placeholder="#E8927C" maxlength="7" value="'+(isCustom?DB.theme.toUpperCase():'')+'"><div class="preview" id="hex-preview" style="background:'+(isCustom?DB.theme:'#e8927c')+'"></div></div><div class="quick" style="margin-top:10px"><button data-action="apply-hex">应用自定义颜色</button>'+(isCustom?'<button data-action="set-theme" data-key="coral">恢复默认</button>':'')+'</div></div><div class="sec-title">账号</div><div class="card"><button class="row" data-action="open-wechat"><span><span class="row-label">微信绑定</span><span class="row-sub" style="display:block">'+(m.wechat?'已关联 '+esc(m.wechat):'未绑定')+'</span></span><span class="row-chev">›</span></button><button class="row" data-action="switch-member"><span class="row-label">切换身份</span><span class="row-chev">›</span></button><button class="row" data-action="change-pwd"><span class="row-label" style="color:var(--coral)">修改我的密码</span><span class="row-chev">›</span></button></div><div class="sec-title">打卡模块</div><div class="card">'+modRows+'<button class="row" data-action="open-mod-editor"><span class="row-label" style="color:var(--coral)">＋ 新建模块</span></button>'+(arch.length?'<button class="row" data-action="open-archived"><span class="row-label">已归档（'+arch.length+'）</span><span class="row-chev">›</span></button>':'')+'</div><div class="sec-title">数据与安全</div><div class="card"><button class="row" data-action="export-data"><span class="row-label">导出全部数据</span><span class="row-chev">›</span></button><button class="row" data-action="force-refresh"><span class="row-label" style="color:var(--coral)">刷新云端数据</span><span class="row-chev">›</span></button><button class="row" data-action="logout"><span class="row-label" style="color:#c9707f">退出当前账号</span><span class="row-chev">›</span></button><button class="row" data-action="clear-data"><span class="row-label" style="color:#c9707f">清空本地数据</span><span class="row-chev">›</span></button></div><p class="footnote" style="margin-top:20px">今日宜加油 · 数据实时同步至云端<br>如需换设备，请重新用邀请码加入</p></div>';
+    (!p?'<div class="row"><span class="row-sub">还差一个人，把邀请码发给对方</span></div>':'')+'</div><div class="sec-title">主题配色</div><div class="card" style="padding:14px"><div class="theme-grid">'+themeList+'</div><div class="sec-title" style="margin:4px 2px 8px;font-size:12px">自定义颜色（十六进制）</div><div class="hex-row"><input id="in-hex" placeholder="#E8927C" maxlength="7" value="'+(isCustom?DB.theme.toUpperCase():'')+'"><div class="preview" id="hex-preview" style="background:'+(isCustom?DB.theme:'#e8927c')+'"></div></div><div class="quick" style="margin-top:10px"><button data-action="apply-hex">应用自定义颜色</button>'+(isCustom?'<button data-action="set-theme" data-key="coral">恢复默认</button>':'')+'</div></div><div class="sec-title">账号</div><div class="card"><button class="row" data-action="open-wechat"><span><span class="row-label">微信绑定</span><span class="row-sub" style="display:block">'+(m.wechat?'已关联 '+esc(m.wechat):'未绑定')+'</span></span><span class="row-chev">›</span></button><button class="row" data-action="switch-member"><span class="row-label">切换身份</span><span class="row-chev">›</span></button><button class="row" data-action="change-pwd"><span class="row-label" style="color:var(--coral)">修改我的密码</span><span class="row-chev">›</span></button></div><div class="sec-title">打卡模块</div><div class="card">'+modRows+'<button class="row" data-action="open-mod-editor"><span class="row-label" style="color:var(--coral)">＋ 新建模块</span></button>'+(arch.length?'<button class="row" data-action="open-archived"><span class="row-label">已归档（'+arch.length+'）</span><span class="row-chev">›</span></button>':'')+'</div><div class="sec-title">数据与安全</div><div class="card"><button class="row" data-action="export-data"><span class="row-label">导出全部数据</span><span class="row-chev">›</span></button><button class="row" data-action="force-refresh"><span class="row-label" style="color:var(--coral)">刷新云端数据</span><span class="row-chev">›</span></button><button class="row" data-action="logout"><span class="row-label" style="color:#c9707f">退出当前账号</span><span class="row-chev">›</span></button><button class="row" data-action="clear-data"><span class="row-label" style="color:#c9707f">清空本地数据</span><span class="row-chev">›</span></button></div><p class="footnote" style="margin-top:20px">今日宜加油 · v3.0 账号版 · 数据实时同步至云端<br>换设备：用「邀请码＋姓名＋密码」登录即可找回</p></div>';
 }
 
 function renderTabbar(){
@@ -691,7 +747,7 @@ function drawerModule(d){
 function drawerMember(){ 
   const list = DB.members.map(m=>'<button class="row" data-action="set-member" data-id="'+m.id+'"><span class="member-line"><span class="member-dot" style="background:'+mColor(m.id)+'"></span>'+esc(m.name)+'</span>'+(m.id===DB.currentMemberId?'<span class="row-value" style="color:var(--coral)">当前</span>':'')+'</button>').join('');
   
-  return '<h3>选择你的身份</h3><p class="d-sub">点击名字即可切换，各自独立</p><div class="card">'+
+  return '<h3>选择你的身份</h3><p class="d-sub">本机临时切换；要换账号请到 设置→退出登录 后重新登录</p><div class="card">'+
     (list || '<div class="row"><span class="row-sub">名单获取失败，请检查网络</span></div>')+
     '</div><button class="btn ghost" data-action="close-drawer">关闭</button>'; 
 }
@@ -728,13 +784,16 @@ function afterCheckin(mid,date,modId,backfill,isProxy){
 document.addEventListener('click', async function(e){
   const el=e.target.closest('[data-action]'); if(!el)return; const a=el.dataset.action;
 
-  if(a==='onboard-choose'){UI.onboardStep='choose';render();return;}
-  if(a==='goto-create'){UI.onboardStep='create';render();return;}
-  if(a==='goto-join'){UI.onboardStep='join';render();return;}
+  if(a==='onboard-choose'){UI.onboardStep='choose';UI.tmp.loginMsg='';render();return;}
+  if(a==='goto-create'){UI.onboardStep='create';UI.tmp.loginMsg='';render();return;}
+  if(a==='goto-join'){UI.onboardStep='join';UI.tmp.loginMsg='';render();return;}
+  if(a==='goto-login'){UI.onboardStep='login';UI.tmp.loginMsg='';render();return;}
+  if(a==='enter-main'){UI.view='main';UI.tab='today';applyTheme();render();return;}
+  if(a==='copy-code2'){ const c=UI.tmp.createdCode||''; if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(c).then(function(){showToast('邀请码已复制');},function(){showToast('邀请码：'+c);}); else showToast('邀请码：'+c); return; }
 
   if(a==='do-create'){
-    const sn=($('#in-space')&&$('#in-space').value||'').trim(); 
-    const nm=($('#in-name')&&$('#in-name').value||'').trim(); 
+    const sn=($('#in-space')&&$('#in-space').value||'').trim();
+    const nm=($('#in-name')&&$('#in-name').value||'').trim();
     const pwd=($('#in-pwd')&&$('#in-pwd').value||'').trim();
     if(!nm || !pwd){showToast('名字和密码必须填写');return;}
     const btn = el; btn.textContent = '创建中...'; btn.disabled = true;
@@ -742,7 +801,7 @@ document.addEventListener('click', async function(e){
       const code=genCode();
       const { data: sp, error: e1 } = await supabase.from('spaces').insert({ name: sn||'我们的空间', invite_code: code }).select('id').single();
       if(e1) throw e1;
-      const { data: mem, error: e2 } = await supabase.from('members').insert({ space_id: sp.id, user_id: CURRENT_USER_ID, name: nm, password: pwd}).select('id').single();
+      const { data: mem, error: e2 } = await supabase.from('members').insert({ space_id: sp.id, user_id: CURRENT_USER_ID, name: nm, password: pwd }).select('id').single();
       if(e2) throw e2;
       SPACE_ID = sp.id;
       const initial = def();
@@ -755,66 +814,77 @@ document.addEventListener('click', async function(e){
         {id:uid(),name:'早起咯',icon:'☀️',color:'#f6c45b',metric:{type:'time',isRoutine:true},status:'active',sort:3},
         {id:uid(),name:'又赖床了',icon:'🛌',color:'#9b8a90',metric:{type:'time',isRoutine:true},status:'active',sort:4}
       ];
-           await supabase.from('app_state').insert({ space_id: sp.id, data: initial, updated_by: CURRENT_USER_ID });
-      DB = initial; saveLocalCache(); 
-      
-      await refreshMembers(); // 👈 补上这句：建完空间，立刻去表里拉取真实的成员名单！
-
-      UI.view='main'; UI.tab='today'; applyTheme(); render(); subscribeRealtime();
+      await supabase.from('app_state').insert({ space_id: sp.id, data: initial, updated_by: CURRENT_USER_ID });
+      DB = initial;
+      DB.members = [{id:mem.id, name:nm, userId:CURRENT_USER_ID}];
+      DB.currentMemberId = mem.id;
+      saveLocalCache();
+      writeSession(code, nm, pwd); // 三码合一令牌：这台设备从此就是这个姓名的账号
+      UI.tmp.createdCode = code;
+      UI.view = 'onboard'; UI.onboardStep = 'created'; render();
+      subscribeRealtime();
     }catch(err){ alert('创建失败: '+err.message); btn.textContent='创建'; btn.disabled=false; }
     return;
   }
-    if(a==='change-pwd'){
-    const newPwd = prompt("请输入新密码（换设备找回数据时使用）：");
+  if(a==='change-pwd'){
+    const newPwd = prompt("请输入新密码（登录时使用，请牢记）：");
     if(!newPwd) return;
     const { error } = await supabase.from('members').update({ password: newPwd }).eq('id', DB.currentMemberId);
     if(error) alert("修改失败: " + error.message);
-    else alert("密码修改成功！请牢记新密码。");
+    else {
+      const sess = readSession();
+      writeSession((DB.space && DB.space.inviteCode) ? DB.space.inviteCode : (sess?sess.code:''), me().name, newPwd);
+      // 同步更新本机三码令牌，否则下次打开会"登录信息已失效"
+      alert("密码修改成功！请牢记新密码。");
+    }
     return;
   }
-  if(a==='do-join'){
-    const code=($('#in-code')&&$('#in-code').value||'').trim().toUpperCase(); 
-    const nm=($('#in-name2')&&$('#in-name2').value||'').trim(); 
+  if(a==='do-join' || a==='do-login'){
+    const isLogin = (a==='do-login');
+    const code=($('#in-code')&&$('#in-code').value||'').trim().toUpperCase();
+    const nm=($('#in-name2')&&$('#in-name2').value||'').trim();
     const pwd=($('#in-pwd2')&&$('#in-pwd2').value||'').trim();
-    if(!code||!nm||!pwd){showToast('请填写完整信息');return;}
-    
-    const btn = el; btn.textContent = '验证中...'; btn.disabled = true;
-        try{
-      const { data: spId, error: e1 } = await supabase.rpc('join_space_smart', {
-        p_invite_code: code, p_name: nm, p_password: pwd
-      });
+    if(!code||!nm||!pwd){showToast('请填写完整：邀请码、名字、密码');return;}
+
+    const btn = el; btn.textContent = isLogin?'登录中...':'注册中...'; btn.disabled = true;
+    try{
+      // 1. 邀请码找空间
+      const { data: sp, error: e1 } = await supabase.from('spaces').select('id, name, invite_code').eq('invite_code', code).maybeSingle();
       if(e1) throw new Error(e1.message);
+      if(!sp) throw new Error('邀请码不存在，请找创建人核对');
 
-      SPACE_ID = spId; 
-      localStorage.removeItem('jryjy_cache_'+SPACE_ID); 
-      
-      const { data: row } = await supabase.from('app_state').select('data').eq('space_id', SPACE_ID).single();
-      if(row && row.data) { 
-        DB = Object.assign(def(), row.data); 
-      } else {
-        DB = def();
+      // 2. 名字找账号
+      const { data: mem, error: e2 } = await supabase.from('members').select('id, name, password, wechat').eq('space_id', sp.id).eq('name', nm).maybeSingle();
+      if(e2) throw new Error(e2.message);
+      let myId;
+      if(mem){
+        const memPwd = (mem.password==null?'':String(mem.password));
+        if(memPwd === ''){
+          // 老版本加入的账号可能还没设过密码：首次用"注册加入"补设
+          if(isLogin) throw new Error('「'+nm+'」还没设置过密码，请改用「用邀请码注册加入」入口设置密码');
+          const { error: e4 } = await supabase.from('members').update({ password: pwd }).eq('id', mem.id);
+          if(e4) throw new Error(e4.message);
+          myId = mem.id;
+        } else if(memPwd !== pwd){
+          throw new Error('「'+nm+'」这个名字已被注册，密码不对。如果这是你本人，请核对密码');
+        } else {
+          if(!isLogin) showToast('这个名字已注册且密码正确，直接为你登录');
+          myId = mem.id;
+        }
+      }else{
+        if(isLogin) throw new Error('这个空间里还没有「'+nm+'」这个账号，请先用邀请码注册加入');
+        const { data: newMem, error: e3 } = await supabase.from('members').insert({ space_id: sp.id, user_id: CURRENT_USER_ID, name: nm, password: pwd }).select('id').single();
+        if(e3) throw new Error(e3.message);
+        myId = newMem.id;
       }
-      
-      // 强行删掉可能残留的脏身份
-      DB.currentMemberId = null; 
-      if (!DB.members) DB.members = [];
-      
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) CURRENT_USER_ID = user.id;
 
-      // 去查真实名单
-      await refreshMembers(nm); 
-      
-      // 【究极兜底】：如果因为网络问题没查到名单，强行用她的名字造一个身份！
-      if (!DB.currentMemberId) {
-        DB.members = [{ id: CURRENT_USER_ID, name: nm, userId: CURRENT_USER_ID }];
-        DB.currentMemberId = CURRENT_USER_ID;
-        saveLocalCache();
-      }
-
+      // 3. 进入这个空间（换账号时先重置本地状态，绝不含上一个账号的残留）
+      await enterSpace(sp.id, myId, nm);
+      writeSession(code, nm, pwd); // 三码合一令牌：此后这台设备就是这个姓名的账号
       UI.view='main'; UI.tab='today'; applyTheme(); render(); subscribeRealtime();
-    }catch(err){ alert(err.message); btn.textContent='进入空间'; btn.disabled=false; }
-    return;  
+      showToast('欢迎回来，'+nm);
+    }catch(err){ alert(err.message); btn.textContent = isLogin?'登录':'注册并进入空间'; btn.disabled=false; }
+    return;
   }
 
   if(a==='tab'){UI.tab=el.dataset.tab;UI.drawer=null;render();return;}
@@ -1002,10 +1072,10 @@ document.addEventListener('click', async function(e){
     location.reload(); // 直接刷新网页，不走任何网络请求，绝不卡死
     return;
   }
-    if(a==='logout'){
-    if(confirm('确定要退出当前账号并重新登录吗？打卡数据已保存在云端，不会丢失。')) {
-      await supabase.auth.signOut();
-      localStorage.clear();
+  if(a==='logout'){
+    if(confirm('确定要退出当前账号吗？数据都在云端，不会丢失。下次用「邀请码＋姓名＋密码」即可重新登录。')){
+      clearSession(); // 只清三码令牌；门禁密码记录保留，不必重新输入门禁
+      try{ Object.keys(localStorage).filter(function(k){return k.indexOf('jryjy_cache_')===0;}).forEach(function(k){localStorage.removeItem(k);}); }catch(e){}
       location.reload();
     }
     return;
