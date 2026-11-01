@@ -230,16 +230,11 @@ async function boot() {
     } else { CURRENT_USER_ID = user.id; }
 
          const { data: mem } = await supabase.from('members').select('space_id').eq('user_id', CURRENT_USER_ID).maybeSingle();
+    const { data: mem } = await supabase.from('members').select('space_id').eq('user_id', CURRENT_USER_ID).maybeSingle();
     if(!mem) {
       $('#loading-screen').style.display = 'none';
-      UI.view = 'onboard'; render(); return;
-    }  
-    
-    if(!mem) {
-      $('#loading-screen').style.display = 'none';
-      UI.view = 'onboard'; render(); return;
+      UI.view = 'onboard'; render(); return; 
     }
-
       SPACE_ID = mem.space_id;
     loadLocalCache(); 
     
