@@ -52,8 +52,8 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer;pad
 <script type="module">
 
 
-// 版本号：登录首页和设置页都会显示，手机上看到 v3.2 才说明跑的是新代码（防止旧缓存假装新代码）
-const APP_VERSION = 'v3.2';
+// 版本号：登录首页和设置页都会显示，手机上看到 v3.3 才说明跑的是新代码（防止旧缓存假装新代码）
+const APP_VERSION = 'v3.3';
 // 换成你绑定的自定义域名（如果 sb.betteragain.cn 还没变绿，可以先用右边的 workers.dev 网址测试）
 const SUPABASE_URL = 'https://sb.betteragain.cn';  
 const SUPABASE_ANON_KEY = 'sb_publishable_EDbc_4y4rRQ44uOusaxk4w_Pb_LSQVm';
@@ -135,23 +135,91 @@ window.__doSearch = function(val) {
 window.__jumpToDay = function(date) { UI.calMonth = date.slice(0,7); UI.drawer = { type: 'day', date: date }; render(); };
 window.__jumpToTab = function(tab, subTab) { UI.tab = tab; if(subTab) UI.listTab = subTab; UI.drawer = null; render(); };
 
-const B = (t, d, p, i, c) => ({ title: t, desc: `坚持 ${d} 天`, poem: p, icon: i, color: c });
-const BADGE_DEFS = {
-  1: B('启航徽章', 1, '「九层之台，起于累土。」', '⛵', '#8fb896'), 2: B('星火徽章', 2, '「星星之火，可以燎原。」', '✨', '#8fb896'), 3: B('新芽徽章', 3, '「破土而出，向阳而生。」', '🌱', '#8fb896'), 4: B('扎根徽章', 4, '「向下扎根，向上生长。」', '🌿', '#8fb896'), 5: B('习惯萌芽', 5, '「好习惯的种子正在发芽。」', '🪴', '#8fb896'), 6: B('渐入佳境', 6, '「渐入佳境，不再觉得勉强。」', '🌳', '#8fb896'), 7: B('一周纪念章', 7, '「一周的坚持，值得被看见。」', '🌲', '#8fb896'), 8: B('小成徽章', 8, '「八方聚力，渐成大器。」', '⚓', '#e8927c'), 9: B('笃行徽章', 9, '「笃行不怠，方得始终。」', '🚶', '#e8927c'), 10: B('十全徽章', 10, '「十全十美，是一个新的里程碑。」', '🎯', '#e8927c'),
-  11: B('精进徽章', 11, '「百尺竿头，更进一步。」', '📈', '#e8927c'), 12: B('轮回徽章', 12, '「十二时辰，周而复始，初心不改。」', '🕰️', '#e8927c'), 13: B('破局徽章', 13, '「打破常规，突破自我。」', '🦅', '#e8927c'), 14: B('两周纪念', 14, '「十四天的坚持，已成为你的底气。」', '🛡️', '#e8927c'), 15: B('满月勋章', 15, '「十五为中国农历中月圆的日子。」', '🌕', '#e8927c'), 16: B('星辰徽章', 16, '「十六岁的月亮，十六天的星光。」', '⭐', '#7c9bb8'), 17: B('破晓徽章', 17, '「黎明前的黑暗最难熬，你已看见曙光。」', '🌅', '#7c9bb8'), 18: B('无畏徽章', 18, '「十八般武艺，样样精通。」', '⚔️', '#7c9bb8'), 19: B('月华徽章', 19, '「月光如华，照亮你前行的路。」', '🌙', '#7c9bb8'), 20: B('双十徽章', 20, '「二十天的积累，量变即将引发质变。」', '⚡', '#7c9bb8'),
-  21: B('习惯养成', 21, '「据说 21 天能养成一个习惯。」', '🧠', '#7c9bb8'), 22: B('双月徽章', 22, '「两个周期的坚持，已长成大树。」', '🌳', '#b89bc9'), 23: B('破浪徽章', 23, '「乘风破浪会有时，直挂云帆济沧海。」', '⛵', '#b89bc9'), 24: B('生辉徽章', 24, '「二十四节气，见证你的生生不息。」', '🌾', '#b89bc9'), 25: B('四分之一', 25, '「一月之期近在眼前，稳住节奏。」', '🚀', '#b89bc9'), 26: B('精诚徽章', 26, '「精诚所至，金石为开。」', '💎', '#b89bc9'), 27: B('风骨徽章', 27, '「二十七天，练就非凡的风骨。」', '🎋', '#b89bc9'), 28: B('双周满月', 28, '「二十八天的坚守，已是你的一部分。」', '🌕', '#b89bc9'), 29: B('跃迁徽章', 29, '「即将跨越三十天大关，继续冲刺。」', '🌌', '#b89bc9'), 30: B('而立徽章', 30, '「三十天，足以让一颗种子长成树苗。」', '🌳', '#d9a05b'),
-  50: B('半百行者', 50, '「行百里者半九十，你已走了一半。」', '🏃', '#d9a05b'), 100: B('百日基石', 100, '「百日筑基，细流汇成江海。」', '🧱', '#d9a05b'), 200: B('双百达人', 200, '「两百个日夜，你的坚持让平凡发光。」', '💎', '#d9a05b'), 365: B('周岁王者', 365, '「三百六十五天，时间为你加冕。」', '👑', '#d9a05b'),
-  730: B('双载永恒', 730, '「两年风雨同舟，这是属于你的史诗。」', '🏆', '#d87a95'), 1000: B('千日传奇', 1000, '「千磨万击还坚劲，任尔东西南北风。」', '🔥', '#d87a95')
-};
-function generateDynamicBadge(days) {
-  const titles = ['坚持者', '修行者', '笃行者', '破局者', '追梦人', '攀登者', '守望者', '探险家', '开拓者', '掌舵人'];
-  const icons = ['🌟', '🔥', '💧', '🍃', '🌙', '☀️', '⚡', '🌊', '🌸', '🍀', '💎', '🎯', '🚀', '🧩', '🛡️', '🧭', '🔭', '🧬', '🎖️', '🏅'];
-  const poems = ['「不积跬步，无以至千里。」','「日拱一卒，功不唐捐。」','「星光不问赶路人，时光不负有心人。」','「每一个不曾起舞的日子，都是对生命的辜负。」','「只要方向对了，就不怕路远。」','「你的坚持，终将美好。」','「时间会证明一切，只需静待花开。」','「那些看似不起波澜的日复一日，会突然在某一天让人看到坚持的意义。」'];
-  const tIdx = days % titles.length, iIdx = days % icons.length, pIdx = days % poems.length;
-  const hue = (days * 137) % 360;
-  return B(`第${days}天·${titles[tIdx]}`, days, poems[pIdx], icons[iIdx], `hsl(${hue}, 65%, 60%)`);
+// ===== 段位徽章体系：十阶 SVG 手绘徽章 + 50 句诗词（v3.3）=====
+const MILESTONE_TITLES = { 1:'启航徽章',2:'星火徽章',3:'新芽徽章',4:'扎根徽章',5:'习惯萌芽',6:'渐入佳境',7:'一周纪念章',8:'小成徽章',9:'笃行徽章',10:'十全徽章',11:'精进徽章',12:'轮回徽章',13:'破局徽章',14:'两周纪念',15:'满月勋章',16:'星辰徽章',17:'破晓徽章',18:'无畏徽章',19:'月华徽章',20:'双十徽章',21:'习惯养成',22:'双月徽章',23:'破浪徽章',24:'生辉徽章',25:'四分之一',26:'精诚徽章',27:'风骨徽章',28:'双周满月',29:'跃迁徽章',30:'而立徽章',50:'半百行者',100:'百日基石',200:'双百达人',365:'周岁王者',730:'双载永恒',1000:'千日传奇' };
+
+// 十阶段位：青铜→白银→黄金→铂金→钻石→大师→宗师→王者→传奇→神话
+const TIER_LIST=[
+ {key:'brz',name:'青铜',from:1,c1:'#c49a6c',c2:'#8a6a3e',tag:'初入征途'},
+ {key:'slv',name:'白银',from:6,c1:'#d9dbe2',c2:'#8f909a',tag:'渐入轨道'},
+ {key:'gld',name:'黄金',from:14,c1:'#f6d365',c2:'#c98f2e',tag:'势头正盛'},
+ {key:'plt',name:'铂金',from:25,c1:'#9be8dd',c2:'#48a3a0',tag:'超越常人'},
+ {key:'dia',name:'钻石',from:50,c1:'#bfe9ff',c2:'#5a9fd8',tag:'璀璨坚硬'},
+ {key:'mst',name:'大师',from:90,c1:'#9d8cff',c2:'#5f4fc0',tag:'登堂入室'},
+ {key:'grd',name:'宗师',from:160,c1:'#c08aff',c2:'#7b3fd4',tag:'自成一派'},
+ {key:'kng',name:'王者',from:300,c1:'#ff9a7c',c2:'#c03a2b',tag:'君临高地'},
+ {key:'lgd',name:'传奇',from:550,c1:'#ffb86c',c2:'#8b3fd4',tag:'书写传说'},
+ {key:'myt',name:'神话',from:1000,c1:'#ffe08a',c2:'#ff6b9d',tag:'与神同辉'}
+];
+// 30 级小段位（III→II→I），每级都有明确的晋级天数门槛
+const RANK_STEPS=[
+ {t:0,s:'III',d:1},{t:0,s:'II',d:2},{t:0,s:'I',d:4},
+ {t:1,s:'III',d:6},{t:1,s:'II',d:8},{t:1,s:'I',d:11},
+ {t:2,s:'III',d:14},{t:2,s:'II',d:17},{t:2,s:'I',d:21},
+ {t:3,s:'III',d:25},{t:3,s:'II',d:30},{t:3,s:'I',d:40},
+ {t:4,s:'III',d:50},{t:4,s:'II',d:60},{t:4,s:'I',d:75},
+ {t:5,s:'III',d:90},{t:5,s:'II',d:110},{t:5,s:'I',d:130},
+ {t:6,s:'III',d:160},{t:6,s:'II',d:200},{t:6,s:'I',d:250},
+ {t:7,s:'III',d:300},{t:7,s:'II',d:365},{t:7,s:'I',d:450},
+ {t:8,s:'III',d:550},{t:8,s:'II',d:730},{t:8,s:'I',d:850},
+ {t:9,s:'III',d:1000},{t:9,s:'II',d:1500},{t:9,s:'I',d:2000}
+];
+// 50 句：约 40 句古代真迹 + 约 10 句激励金句，全部围绕坚持与成长，风格统一
+const POEMS=[
+ '「九层之台，起于累土。」','「千里之行，始于足下。」','「天行健，君子以自强不息。」','「路漫漫其修远兮，吾将上下而求索。」','「不积跬步，无以至千里。」',
+ '「锲而不舍，金石可镂。」','「驽马十驾，功在不舍。」','「绳锯木断，水滴石穿。」','「精诚所至，金石为开。」','「长风破浪会有时，直挂云帆济沧海。」',
+ '「天生我材必有用。」','「大鹏一日同风起，扶摇直上九万里。」','「会当凌绝顶，一览众山小。」','「欲穷千里目，更上一层楼。」','「千磨万击还坚劲，任尔东西南北风。」',
+ '「咬定青山不放松，立根原在破岩中。」','「不经一番寒彻骨，怎得梅花扑鼻香。」','「宝剑锋从磨砺出，梅花香自苦寒来。」','「沉舟侧畔千帆过，病树前头万木春。」','「千淘万漉虽辛苦，吹尽狂沙始到金。」',
+ '「山重水复疑无路，柳暗花明又一村。」','「纸上得来终觉浅，绝知此事要躬行。」','「古人学问无遗力，少壮工夫老始成。」','「操千曲而后晓声，观千剑而后识器。」','「盛年不重来，一日难再晨。」',
+ '「及时当勉励，岁月不待人。」','「精卫衔微木，将以填沧海。」','「疾风知劲草，板荡识诚臣。」','「千锤万凿出深山，烈火焚烧若等闲。」','「粉骨碎身浑不怕，要留清白在人间。」',
+ '「宁可枝头抱香死，何曾吹落北风中。」','「少年心事当拏云，谁念幽寒坐呜呃。」','「黑发不知勤学早，白首方悔读书迟。」','「少年易老学难成，一寸光阴不可轻。」','「莫等闲，白了少年头，空悲切。」',
+ '「会挽雕弓如满月，西北望，射天狼。」','「腹有诗书气自华。」','「世上无难事，只怕有心人。」','「只要功夫深，铁杵磨成针。」','「日拱一卒，功不唐捐。」',
+ '「怕什么真理无穷，进一寸有一寸的欢喜。」','「星光不问赶路人，时光不负有心人。」','「每一个不曾起舞的日子，都是对生命的辜负。」','「凡杀不死我的，必使我更强大。」','「凡是过往，皆为序章。」',
+ '「你的坚持，终将美好。」','「时间会证明一切，只需静待花开。」','「那些看似不起波澜的日复一日，终会在某天让你看到坚持的意义。」','「慢慢来，比较快。」','「所谓深渊，下去，也是鹏程万里。」'
+];
+function rankStepOf(n){ if(n<1) return -1; let idx=-1; for(let i=0;i<RANK_STEPS.length;i++){ if(n>=RANK_STEPS[i].d) idx=i; else break; } return idx; }
+function rankOf(n){
+  const s=rankStepOf(n);
+  if(s<0) return { stepIdx:-1, tierIdx:0, tier:TIER_LIST[0], sub:'', next:RANK_STEPS[0], pct:0, toNext:1 };
+  const st=RANK_STEPS[s]; const next=RANK_STEPS[s+1]||null;
+  const span=next?(next.d-st.d):500;
+  const pct=next?Math.min(100,Math.round((n-st.d)/span*100)):100;
+  return { stepIdx:s, tierIdx:st.t, tier:TIER_LIST[st.t], sub:st.s, next, pct, toNext:next?Math.max(0,next.d-n):0 };
 }
-function getBadge(days) { if (BADGE_DEFS[days]) return BADGE_DEFS[days]; return generateDynamicBadge(days); }
+function poemOf(n){ return POEMS[(n*7)%POEMS.length]; }
+// 手绘 SVG 段位徽章：每阶独立设计（盾徽→切面宝石→桂冠→双翼→王冠→凤凰焰→辉光星），渐变配色，绝不用 emoji
+function tierSVG(ti,sz){
+  const t=TIER_LIST[ti]; const g='e'+t.key+Math.random().toString(36).slice(2,7);
+  const defs='<defs><linearGradient id="'+g+'" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="'+t.c1+'"/><stop offset="1" stop-color="'+t.c2+'"/></linearGradient></defs>';
+  const ring='<circle cx="32" cy="32" r="27" fill="none" stroke="url(#'+g+')" stroke-width="3" opacity=".9"/><circle cx="32" cy="32" r="23" fill="url(#'+g+')" opacity=".14"/>';
+  let body='';
+  if(ti===0){ body='<path d="M32 15 L45 20.5 V33 C45 42.5 39 47.5 32 50.5 C25 47.5 19 42.5 19 33 V20.5 Z" fill="url(#'+g+')"/><path d="M19 27 H45" stroke="#fff" stroke-width="2" opacity=".35"/><path d="M32 15 L45 20.5 V26 L32 21 L19 26 V20.5 Z" fill="#fff" opacity=".18"/>'; }
+  else if(ti===1){ body='<path d="M32 15 L45 20.5 V33 C45 42.5 39 47.5 32 50.5 C25 47.5 19 42.5 19 33 V20.5 Z" fill="url(#'+g+')"/><path d="M24 33 L32 26 L40 33 L32 40 Z" fill="#fff" opacity=".85"/><path d="M32 40 L36 44 L32 48 L28 44 Z" fill="#fff" opacity=".5"/>'; }
+  else if(ti===2){ body='<path d="M32 15 L45 20.5 V33 C45 42.5 39 47.5 32 50.5 C25 47.5 19 42.5 19 33 V20.5 Z" fill="url(#'+g+')"/><path d="M32 22 L34.4 29.6 L42 32 L34.4 34.4 L32 42 L29.6 34.4 L22 32 L29.6 29.6 Z" fill="#fff" opacity=".9"/><circle cx="32" cy="32" r="2.4" fill="'+t.c2+'"/>'; }
+  else if(ti===3){ body='<path d="M32 15 L45 20.5 V33 C45 42.5 39 47.5 32 50.5 C25 47.5 19 42.5 19 33 V20.5 Z" fill="url(#'+g+')"/><path d="M32 22 L41 32 L32 44 L23 32 Z" fill="#fff" opacity=".85"/><path d="M32 22 L32 44 M23 32 H41" stroke="'+t.c2+'" stroke-width="1.4" opacity=".5"/>'; }
+  else if(ti===4){ body='<path d="M20 27 L27 17 H37 L44 27 L32 49 Z" fill="url(#'+g+')"/><path d="M20 27 H44 L32 49 Z" fill="#fff" opacity=".22"/><path d="M27 17 L29 27 L32 49 M37 17 L35 27 M20 27 L29 27 M44 27 L35 27 M32 17 V27" stroke="#fff" stroke-width="1" opacity=".45" fill="none"/>'; }
+  else if(ti===5){ body='<path d="M21 45 C15 38 14 27 19 19" stroke="url(#'+g+')" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M43 45 C49 38 50 27 45 19" stroke="url(#'+g+')" stroke-width="2.5" fill="none" stroke-linecap="round"/><ellipse cx="17.5" cy="24" rx="3" ry="1.8" transform="rotate(-52 17.5 24)" fill="url(#'+g+')"/><ellipse cx="21" cy="19.5" rx="3" ry="1.8" transform="rotate(-78 21 19.5)" fill="url(#'+g+')"/><ellipse cx="46.5" cy="24" rx="3" ry="1.8" transform="rotate(52 46.5 24)" fill="url(#'+g+')"/><ellipse cx="43" cy="19.5" rx="3" ry="1.8" transform="rotate(78 43 19.5)" fill="url(#'+g+')"/><path d="M32 20 L35 29 L44 32 L35 35 L32 44 L29 35 L20 32 L29 29 Z" fill="url(#'+g+')"/><circle cx="32" cy="32" r="2.2" fill="#fff" opacity=".9"/>'; }
+  else if(ti===6){ body='<path d="M30 31 C24 24 16 23 10 27 C15 28 18 30 20 33 C16 33 13 35 11 38 C16 38 20 39 23 41 C19 42 17 44 16 46 C22 46 28 44 30 41 Z" fill="url(#'+g+')" opacity=".9"/><path d="M34 31 C40 24 48 23 54 27 C49 28 46 30 44 33 C48 33 51 35 53 38 C48 38 44 39 41 41 C45 42 47 44 48 46 C42 46 36 44 34 41 Z" fill="url(#'+g+')" opacity=".9"/><path d="M32 24 L36 32 L32 40 L28 32 Z" fill="url(#'+g+')"/><path d="M26 32 H38" stroke="#fff" stroke-width="1.6" opacity=".8"/><circle cx="32" cy="32" r="2" fill="#fff" opacity=".9"/>'; }
+  else if(ti===7){ body='<path d="M18 44 L15.5 25 L25 32 L32 20 L39 32 L48.5 25 L46 44 Z" fill="url(#'+g+')"/><rect x="18" y="41" width="28" height="6.5" rx="2.5" fill="url(#'+g+')"/><rect x="18" y="41" width="28" height="6.5" rx="2.5" fill="#fff" opacity=".15"/><circle cx="15.5" cy="25" r="2.6" fill="'+t.c1+'" stroke="#fff" stroke-width="1"/><circle cx="32" cy="20" r="3" fill="'+t.c1+'" stroke="#fff" stroke-width="1"/><circle cx="48.5" cy="25" r="2.6" fill="'+t.c1+'" stroke="#fff" stroke-width="1"/><path d="M25 36 L32 33 L39 36" stroke="#fff" stroke-width="1.4" fill="none" opacity=".6"/>'; }
+  else if(ti===8){ body='<path d="M32 12 C41 20 45 29 41 40 C44.5 36 46 31.5 45.5 27.5 C49 37 45 49 32 53 C19 49 15 37 18.5 27.5 C18 31.5 19.5 36 23 40 C19 29 23 20 32 12 Z" fill="url(#'+g+')"/><path d="M32 22 C37 27 39 33 36.5 40 C38.5 37 39.5 33.5 39 30.5 C41.5 37 39 45 32 47.5 C25 45 22.5 37 25 30.5 C24.5 33.5 25.5 37 27.5 40 C25 33 27 27 32 22 Z" fill="#fff" opacity=".28"/><circle cx="32" cy="34" r="3" fill="#fff" opacity=".95"/>'; }
+  else { body='<g stroke="'+t.c1+'" stroke-width="2" stroke-linecap="round" opacity=".75"><path d="M32 6 V12"/><path d="M32 52 V58"/><path d="M6 32 H12"/><path d="M52 32 H58"/><path d="M13.6 13.6 L17.8 17.8"/><path d="M46.2 46.2 L50.4 50.4"/><path d="M13.6 50.4 L17.8 46.2"/><path d="M46.2 17.8 L50.4 13.6"/></g><circle cx="32" cy="32" r="27" fill="none" stroke="url(#'+g+')" stroke-width="1.5" stroke-dasharray="3 4" opacity=".7"/><path d="M32 14 L36.2 27.8 L50 32 L36.2 36.2 L32 50 L27.8 36.2 L14 32 L27.8 27.8 Z" fill="url(#'+g+')"/><path d="M32 22 L34.6 29.4 L42 32 L34.6 34.6 L32 42 L29.4 34.6 L22 32 L29.4 29.4 Z" fill="#fff" opacity=".85"/><circle cx="32" cy="32" r="2.2" fill="'+t.c2+'"/>'; }
+  return '<svg width="'+sz+'" height="'+sz+'" viewBox="0 0 64 64" style="display:block">'+defs+ring+body+'</svg>';
+}
+function getBadge(days){ const t=rankOf(Math.max(1,days)).tierIdx; return { title: MILESTONE_TITLES[days]||('第'+days+'天'), tierIdx:t }; }
+// 每日徽章收藏：直接从打卡记录推导（每段连续里的第 N 天 = 第 N 枚徽章），无需存储、天然双人合并不打架
+function getCollectedDays(mid){
+  const out=[];
+  DB.modules.filter(x=>x.status==='active' && x.metric && !x.metric.isRoutine).forEach(mod=>{
+    const dates=DB.checkins.filter(c=>c.memberId===mid && c.moduleId===mod.id).map(c=>c.date).sort();
+    let run=0, prev=null;
+    dates.forEach(d=>{ run=(prev && addD(prev,1)===d)?run+1:1; out.push(run); prev=d; });
+  });
+  return out;
+}
+(function injectBadgeCSS(){
+  const css='.tier-ladder{display:flex;gap:5px;overflow-x:auto;padding:10px 2px 6px;scrollbar-width:none}.tier-ladder::-webkit-scrollbar{display:none}.tier-cell{flex:0 0 auto;width:50px;display:flex;flex-direction:column;align-items:center;gap:3px;opacity:.3;transition:.2s}.tier-cell.past{opacity:.7}.tier-cell.now{opacity:1;transform:scale(1.1)}.tier-cell .tn{font-size:10px;color:var(--ink2);font-weight:600}.tier-cell.now .tn{color:var(--ink);font-weight:700}.rankbar{height:8px;background:var(--line2);border-radius:4px;overflow:hidden}.rankbar i{display:block;height:100%;border-radius:4px}.tier-fold{background:#fff;border:1.5px solid var(--line);border-radius:14px;margin-bottom:8px;box-shadow:var(--sh);overflow:hidden}.tier-fold-head{display:flex;align-items:center;gap:8px;padding:10px 14px;width:100%;text-align:left}.tier-fold-body{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;padding:2px 12px 12px}.btile{background:var(--line2);border-radius:10px;padding:7px 2px 6px;display:flex;flex-direction:column;align-items:center;gap:3px}.btile .d{font-size:11px;font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums}';
+  document.head.insertAdjacentHTML('beforeend','<style>'+css+'</style>');
+})();
 
 const THEMES={coral:{name:'奶油珊瑚',p:'#e8927c',p2:'#fbeae5',bg:'#faf7f2'},mint:{name:'薄荷抹茶',p:'#7db08a',p2:'#e8f4ea',bg:'#f6faf6'},blue:{name:'雾霾蓝',p:'#7c9bb8',p2:'#e8f0f7',bg:'#f5f8fb'},lilac:{name:'藕荷紫',p:'#a98bc2',p2:'#f2ecf7',bg:'#f8f6fb'},peach:{name:'蜜桃粉',p:'#e89b9b',p2:'#fcecec',bg:'#fdf7f6'},lemon:{name:'柠檬黄',p:'#c9a227',p2:'#faf3dc',bg:'#fdfbf3'}};
 function hex2rgb(h){h=h.replace('#','');if(h.length===3)h=h.split('').map(c=>c+c).join('');const n=parseInt(h,16);return{r:(n>>16)&255,g:(n>>8)&255,b:n&255};}
@@ -354,24 +422,25 @@ function getModuleStats(mid, modId) {
   return { total, current: cur, lost, best };
 }
 function getMemberMaxBadgeInfo(mid) {
-  const mods = DB.modules.filter(x=>x.status==='active'); let maxDays = 0; let bestMod = null;
+  // 作息模块（早睡/早起/熬夜/赖床）不参与徽章与段位
+  const mods = DB.modules.filter(x=>x.status==='active' && x.metric && !x.metric.isRoutine); let maxDays = 0; let bestMod = null;
   mods.forEach(mod => { const st = getModuleStats(mid, mod.id); if(st.best > maxDays) { maxDays = st.best; bestMod = mod; } });
   return { maxDays, bestMod };
 }
 function getMemberUnlockedBadges(mid) {
-  const mods = DB.modules.filter(x=>x.status==='active'); const unlockedMap = {};
+  const mods = DB.modules.filter(x=>x.status==='active' && x.metric && !x.metric.isRoutine); const unlockedMap = {};
   mods.forEach(mod => {
     const st = getModuleStats(mid, mod.id); if(st.best === 0) return;
-    Object.keys(BADGE_DEFS).forEach(dStr => {
+    Object.keys(MILESTONE_TITLES).forEach(dStr => {
       const days = parseInt(dStr);
-      if (st.best >= days) { if(!unlockedMap[days]) unlockedMap[days] = { badge: BADGE_DEFS[dStr], mods: [] }; unlockedMap[days].mods.push(mod); }
+      if (st.best >= days) { if(!unlockedMap[days]) unlockedMap[days] = { badge: MILESTONE_TITLES[dStr], mods: [] }; unlockedMap[days].mods.push(mod); }
     });
   });
   return unlockedMap;
 }
 const CD_TYPES={'纪念日':'💗','考试':'📝','回家':'🏠','放假':'🎉','旅行':'✈️','其他':'📎'};
 
-const UI={ view:'main', tab:'today', calMonth:mKey(today()), drawer:null, celebrate:null, onboardStep:'choose', listTab:'travel', tmp:{}, celebrated:new Set(), journalScope:'me', cdType:'纪念日', calExpanded:false, targetMemberId:null, collapsed:{'routine':true}, badgeViewMemberId:null, calendarView:'grid', calendarSort:'desc' };
+const UI={ view:'main', tab:'today', calMonth:mKey(today()), drawer:null, celebrate:null, onboardStep:'choose', listTab:'travel', tmp:{}, celebrated:new Set(), journalScope:'me', cdType:'纪念日', calExpanded:false, targetMemberId:null, collapsed:{'routine':true}, badgeViewMemberId:null, calendarView:'grid', calendarSort:'desc', badgeFold:{}, badgeCurrentTier:0 };
 
 function render(){
   const app=$('#app');
@@ -590,33 +659,75 @@ function renderBadgesPage() {
   const targetMem = DB.members.find(x=>x.id===UI.badgeViewMemberId) || me();
   const maxInfo = getMemberMaxBadgeInfo(targetMem.id);
   const unlockedMap = getMemberUnlockedBadges(targetMem.id);
-  
-  let html = '<div class="main"><div class="header"><div class="space-name" style="font-size:22px;text-align:center;margin-top:10px">🎖️ 徽章墙</div></div><div class="member-tabs">';
+  const r = rankOf(Math.max(1, maxInfo.maxDays));
+  UI.badgeCurrentTier = r.tierIdx;
+  const collected = getCollectedDays(targetMem.id);
+  const byTier = []; TIER_LIST.forEach(()=>byTier.push([]));
+  collected.forEach(d=>{ byTier[rankOf(d).tierIdx].push(d); });
+
+  let html = '<div class="main"><div class="header"><div class="space-name" style="font-size:22px;text-align:center;margin-top:10px">徽章墙</div></div><div class="member-tabs">';
   DB.members.forEach(m => {
     html += '<button class="member-tab ' + (m.id===UI.badgeViewMemberId?'on':'') + '" data-action="switch-badge-view" data-id="' + m.id + '"><span style="width:8px;height:8px;border-radius:50%;background:' + mColor(m.id) + '"></span>' + esc(m.name) + '</button>';
   });
-  html += '</div><div class="card" style="padding:16px;margin-bottom:16px;text-align:center;background:linear-gradient(135deg,#fff,var(--line2))"><div style="font-size:13px;color:var(--ink2);margin-bottom:6px">' + esc(targetMem.name) + ' 的最高记录</div><div style="font-size:28px;font-weight:800;color:' + mColor(targetMem.id) + ';font-variant-numeric:tabular-nums">' + maxInfo.maxDays + ' <span style="font-size:14px">天</span></div></div>';
-  
-  html += '<div class="badges-grid">';
+  html += '</div>';
+
+  // 当前段位卡：徽章 + 段名 + 进度条 + 距下一段倒计时
+  html += '<div class="card" style="padding:16px;margin-bottom:10px;display:flex;align-items:center;gap:14px;background:linear-gradient(135deg,#fff,var(--line2))">'
+    + '<div style="flex-shrink:0">' + tierSVG(r.tierIdx, 60) + '</div>'
+    + '<div style="flex:1;min-width:0">'
+    + '<div style="display:flex;align-items:baseline;gap:6px;flex-wrap:wrap"><b style="font-size:21px;font-weight:800;color:' + r.tier.c2 + '">' + r.tier.name + ' ' + r.sub + '</b><span style="font-size:11px;color:var(--ink3)">' + r.tier.tag + '</span><span style="margin-left:auto;font-size:11px;color:var(--ink3)">最高 ' + maxInfo.maxDays + ' 天</span></div>'
+    + '<div class="rankbar" style="margin:9px 0 6px"><i style="width:' + r.pct + '%;background:linear-gradient(90deg,' + r.tier.c1 + ',' + r.tier.c2 + ')"></i></div>'
+    + (r.next ? '<div style="font-size:12px;color:var(--ink2)">距「' + TIER_LIST[r.next.t].name + r.next.s + '」还差 <b style="color:var(--ink)">' + r.toNext + '</b> 天</div>'
+              : '<div style="font-size:12px;color:var(--ink2)">已达最高段位 · ' + r.tier.name + '</div>')
+    + '</div></div>';
+
+  // 十阶天梯：等级差异一眼看清
+  html += '<div class="tier-ladder">' + TIER_LIST.map((t,i)=>{
+    const st = i < r.tierIdx ? 'past' : (i===r.tierIdx?'now':'');
+    return '<div class="tier-cell ' + st + '">' + tierSVG(i, 40) + '<span class="tn">' + t.name + '</span></div>';
+  }).join('') + '</div>';
+
+  // 里程碑徽章（SVG 设计款）
+  html += '<div class="stats-group-title" style="margin:16px 4px 8px">里程碑徽章</div><div class="badges-grid">';
   const displayDays = [];
   for(let i=1; i<=30; i++) displayDays.push(i);
   [50, 100, 200, 365, 730, 1000].forEach(d => { if(!displayDays.includes(d)) displayDays.push(d); });
-
   displayDays.forEach(d => {
-    const b = getBadge(d);
+    const mi = getBadge(d);
     const locked = maxInfo.maxDays < d;
     const unlockInfo = unlockedMap[d];
     let modTag = '';
     if (!locked && unlockInfo && unlockInfo.mods.length > 0) {
       modTag = '<div class="badge-mod-tag">由 ' + unlockInfo.mods[0].icon + ' ' + esc(unlockInfo.mods[0].name) + '</div>';
     }
-    html += '<div class="badge-item ' + (locked?'locked':'') + '" style="' + (!locked?'padding-bottom:22px':'') + '">';
-    html += '<div class="icon">' + b.icon + '</div>';
-    html += '<div class="title">' + esc(b.title) + '</div>';
-    html += '<div class="desc">' + (locked ? d + '天解锁' : '已达成') + '</div>';
-    html += modTag + '</div>';
+    html += '<div class="badge-item ' + (locked?'locked':'') + '" style="' + (!locked?'padding-bottom:22px':'') + '">'
+      + '<div class="icon" style="font-size:0;line-height:0">' + tierSVG(mi.tierIdx, 40) + '</div>'
+      + '<div class="title">' + esc(mi.title) + '</div>'
+      + '<div class="desc">' + (locked ? d + '天解锁' : '已达成') + '</div>'
+      + modTag + '</div>';
   });
-  
+  html += '</div>';
+
+  // 每日徽章收藏：按段位分组、可折叠、默认展开当前段位
+  html += '<div class="stats-group-title" style="margin:18px 4px 8px">每日徽章收藏 <span style="font-weight:400;color:var(--ink3);font-size:11px">共 ' + collected.length + ' 枚 · 打卡即自动收藏</span></div>';
+  let any=false;
+  byTier.forEach((arr, ti)=>{
+    if(!arr.length) return; any=true;
+    const t = TIER_LIST[ti];
+    const open = (UI.badgeFold[ti]===undefined) ? (ti===r.tierIdx) : !!UI.badgeFold[ti];
+    const shown = arr.slice().sort((a,b)=>b-a);
+    const capped = shown.length > 144;
+    html += '<div class="tier-fold"><button class="tier-fold-head" data-action="toggle-badge-tier" data-tier="' + ti + '">'
+      + tierSVG(ti, 26)
+      + '<span style="font-weight:700;font-size:14px;color:' + t.c2 + '">' + t.name + '</span>'
+      + '<span style="font-size:11px;color:var(--ink3)">' + t.from + ' 天起步</span>'
+      + '<span style="margin-left:auto;font-size:11px;background:var(--line2);color:var(--ink2);padding:1px 8px;border-radius:8px;font-weight:600">' + arr.length + ' 枚</span>'
+      + '<span style="color:var(--ink3);font-size:11px">' + (open?'收起 ▲':'展开 ▼') + '</span></button>'
+      + (open ? '<div class="tier-fold-body">' + shown.slice(0,144).map(d=>'<div class="btile"><span style="font-size:0;line-height:0">' + tierSVG(ti, 20) + '</span><span class="d">' + d + '天</span></div>').join('') + (capped?'<div class="btile" style="background:none"><span class="d" style="color:var(--ink3)">…</span></div>':'') + '</div>' : '')
+      + '</div>';
+  });
+  if(!any) html += '<div class="j-empty" style="margin-bottom:20px">还没有每日徽章，去打个卡吧</div>';
+
   return html + '</div></div>';
 }
 
@@ -791,7 +902,18 @@ function drawerTodo(d){ const td=d.id?DB.todos.find(x=>x.id===d.id):null; const 
 
 function renderCelebrate(){
   const c=UI.celebrate;if(!c)return '';
-  if(c.level==='badge'){ const b = c.badge; return '<div class="cel-mask" data-action="close-celebrate"><div class="badge-card" style="--glow:'+b.color+'33; --c-color:'+b.color+'"><button class="badge-close" data-action="close-celebrate">×</button><div class="badge-icon-wrap"><div class="badge-icon">'+b.icon+'</div></div><div class="badge-days">'+c.n+' DAYS</div><div class="badge-title">'+esc(b.title)+'</div><div class="badge-desc">'+esc(b.desc)+'</div><div class="badge-poem">'+esc(b.poem)+'</div><div class="badge-footer"><span>🏅 '+esc(c.modName)+'</span><span style="display:flex;align-items:center;gap:4px;font-weight:600;color:var(--ink2)"><span style="width:6px;height:6px;border-radius:50%;background:'+c.mColor+'"></span>'+esc(c.mName)+'</span></div><button class="btn primary" style="background:'+b.color+'; box-shadow:0 4px 14px '+b.color+'66" data-action="close-celebrate">收下徽章</button></div></div>'; }
+  if(c.level==='badge'){
+    const up=c.rankUp;
+    return '<div class="cel-mask" data-action="close-celebrate"><div class="badge-card" style="--glow:'+c.glow+'33; --c-color:'+c.tierColor+'">'
+    +'<button class="badge-close" data-action="close-celebrate">×</button>'
+    +'<div class="badge-icon-wrap"><div class="badge-icon" style="font-size:0;line-height:0">'+c.emblem+'</div></div>'
+    +'<div class="badge-days">第 '+c.n+' 天</div>'
+    +'<div class="badge-title">'+esc(c.tierName)+'</div>'
+    +(up?'<div class="badge-desc" style="color:var(--c-color);font-weight:700">▲ 晋级 '+esc(up.from)+' → '+esc(up.to)+'</div>':'')
+    +'<div class="badge-poem">'+esc(c.poem)+'</div>'
+    +'<div class="badge-footer"><span>'+esc(c.modName)+'</span><span style="display:flex;align-items:center;gap:4px;font-weight:600;color:var(--ink2)"><span style="width:6px;height:6px;border-radius:50%;background:'+c.mColor+'"></span>'+esc(c.mName)+'</span></div>'
+    +'<button class="btn primary" style="background:'+c.tierColor+'; box-shadow:0 4px 14px '+c.tierColor+'66" data-action="close-celebrate">收下徽章</button></div></div>';
+  }
   return '<div class="toast-cel" data-action="close-celebrate"><div class="tc-num">'+c.n+'</div><div class="tc-body"><div class="tc-text">'+esc(c.text)+'</div>'+(c.partnerToday?'<div class="tc-sub">TA 今天也完成了'+(c.shared>1?' · 并肩 '+c.shared+' 天':'')+'</div>':'')+'</div></div>';
 }
 
@@ -801,11 +923,15 @@ function upsertCheckin(o){
   else DB.checkins.push({ id:uid(), moduleId:o.moduleId, memberId:o.memberId, date:o.date, value:o.value==null?1:o.value, note:o.note||'', subType:o.subType, source:o.source||'live', operatorId:o.operatorId, createdAt:Date.now() });
   save();
 }
-function afterCheckin(mid,date,modId,backfill,isProxy){
+function afterCheckin(mid,date,modId,backfill,isProxy,preStreak){
+  const mod=DB.modules.find(x=>x.id===modId);
   if(backfill){showToast('已补录，连续 '+curStreak(mid)+' 天');return;}
+  if(mod && mod.metric && mod.metric.isRoutine){ showToast('已记录 · '+mod.name+'（作息不参与徽章）'); return; } // 作息模块不打徽章
   const n = curModStreak(mid, modId); if(n < 1) return;
-  const badge = getBadge(n); const mod = DB.modules.find(x=>x.id===modId); const mem = DB.members.find(x=>x.id===mid);
-  UI.celebrate = { level: 'badge', n: n, badge: badge, modName: mod ? mod.name : '打卡', mName: mem ? mem.name : '我', mColor: mem ? mColor(mem.id) : 'var(--coral)' };
+  const newStep=rankStepOf(n); const oldStep=rankStepOf(preStreak!=null?preStreak:0);
+  const r=rankOf(n); const mem=DB.members.find(x=>x.id===mid);
+  UI.celebrate = { level:'badge', n:n, emblem:tierSVG(r.tierIdx,68), tierName:r.tier.name+' '+r.sub, tierColor:r.tier.c2, glow:r.tier.c1, poem:poemOf(n), modName:mod?mod.name:'打卡', mName:mem?mem.name:'我', mColor:mem?mColor(mem.id):'var(--coral)' };
+  if(newStep>oldStep){ const o=RANK_STEPS[oldStep]||{t:0,s:'—'}; const w=RANK_STEPS[newStep]; UI.celebrate.rankUp={ from:(oldStep<0?'未入门':TIER_LIST[o.t].name+o.s), to:TIER_LIST[w.t].name+w.s }; }
   render();
 }
 
@@ -916,7 +1042,8 @@ document.addEventListener('click', async function(e){
   }
 
   if(a==='tab'){UI.tab=el.dataset.tab;UI.drawer=null;render();return;}
-  if(a==='switch-badge-view'){UI.badgeViewMemberId=el.dataset.id;render();return;}
+  if(a==='switch-badge-view'){UI.badgeViewMemberId=el.dataset.id;UI.badgeFold={};render();return;}
+  if(a==='toggle-badge-tier'){ const ti=+el.dataset.tier; const open=(UI.badgeFold[ti]===undefined)?(ti===UI.badgeCurrentTier):!!UI.badgeFold[ti]; UI.badgeFold[ti]=!open; render(); return; }
   if(a==='list-tab'){UI.listTab=el.dataset.tab;render();return;}
   if(a==='switch-cal-view'){UI.calendarView=el.dataset.view;render();return;}
   if(a==='switch-cal-sort'){UI.calendarSort = UI.calendarSort === 'desc' ? 'asc' : 'desc';render();return;}
@@ -989,16 +1116,18 @@ document.addEventListener('click', async function(e){
     const raw=$('#in-value')?$('#in-value').value:''; const note=$('#in-note')?$('#in-note').value:''; const mod=DB.modules.find(x=>x.id===modId);
     let v; if(a==='submit-time'){ if(!raw){showToast('请选择时间');return;} v=raw; } else { v=parseFloat(raw); if(!raw||isNaN(v)||v<0){showToast('填一个数字');return;} }
     let sub = undefined; if(mod.metric.hasSubtype) { sub = UI.tmp.subType || '有氧'; }
+    const preStreak = curModStreak(mid, modId);
     upsertCheckin({moduleId:modId,memberId:mid,date:date,value:v,note:note,subType:sub,source:bf?'backfill':'live',operatorId:operatorId});
-    UI.tmp.subType=null; UI.drawer=null; render(); afterCheckin(mid,date,modId,bf,mid!==operatorId); return;
+    UI.tmp.subType=null; UI.drawer=null; render(); afterCheckin(mid,date,modId,bf,mid!==operatorId,preStreak); return;
   }
 
   if(a==='submit-boolean'){
     const modId=el.dataset.module,date=el.dataset.date; const mid=el.dataset.member||DB.currentMemberId; const operatorId=DB.currentMemberId;
     const ex=DB.checkins.find(c=>c.moduleId===modId&&c.memberId===mid&&c.date===date);
     if(ex){DB.checkins=DB.checkins.filter(c=>c.id!==ex.id);save();UI.drawer=null;render();return;}
+    const preStreak = curModStreak(mid, modId);
     upsertCheckin({moduleId:modId,memberId:mid,date:date,value:1,source:'live',operatorId:operatorId});
-    UI.drawer=null; render(); afterCheckin(mid,date,modId,false,mid!==operatorId); return;
+    UI.drawer=null; render(); afterCheckin(mid,date,modId,false,mid!==operatorId,preStreak); return;
   }
 
   if(a==='del-checkin'){DB.checkins=DB.checkins.filter(c=>c.id!==el.dataset.id);save();UI.drawer=null;render();return;}
