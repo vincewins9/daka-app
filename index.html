@@ -149,7 +149,7 @@ async function flushSave() {
   
   const safePatch = JSON.parse(JSON.stringify(patch));
   delete safePatch.currentMemberId; 
-  delete safePatch.members; // 👈 新增这一行：绝不把名单传上云端
+  // 允许上传 members，这样不管网络怎么卡，打卡数据里都自带了一份名单
 
   const { error } = await supabase.rpc('merge_app_state', { p_space_id: SPACE_ID, p_patch: safePatch });
   if(error) { console.error('同步失败', error); pendingPatch = Object.assign(patch, pendingPatch); }
@@ -157,34 +157,35 @@ async function flushSave() {
 async function refreshMembers(forcedName){
   if(!SPACE_ID) return;
   try {
-    const { data: mems } = await supabase.from('members').select('id, user_id, name, wechat').eq('space_id', SPACE_ID);
-    if(mems && mems.length > 0) {
-      // 强行把真实的两人名单塞进去
+    const { data: mems, error } = await supabase.from('members').select('id, user_id, name, wechat').eq('space_id', SPACE_ID);
+    if(!error && mems && mems.length > 0) {
+      // 查到了，就用真实的两人名单覆盖
       DB.members = mems.map(m=>({id:m.id, name:m.name, wechat:m.wechat, userId:m.user_id}));
-      
-      // 如果是在登录界面输入了名字（比如谌莹）
-      if (forcedName) {
-        const match = DB.members.find(m => m.name === forcedName);
-        if (match) {
-          DB.currentMemberId = match.id;
-          // 强制把她的设备绑定在这个名字上
-          supabase.from('members').update({ user_id: CURRENT_USER_ID }).eq('id', match.id).then(()=>{}).catch(()=>{});
-          saveLocalCache();
-          return;
-        }
-      }
-
-      // 如果只是日常刷新，本地身份丢了，就按设备找；找不到就默认选第一个
-      if (!DB.currentMemberId || !DB.members.some(m => m.id === DB.currentMemberId)) {
-        let mine = DB.members.find(m => String(m.user_id).toLowerCase() === String(CURRENT_USER_ID).toLowerCase());
-        if (!mine) mine = DB.members[0];
-        DB.currentMemberId = mine.id;
-      }
-      saveLocalCache();
     }
   } catch (e) {
-    console.error("网络异常", e);
+    console.warn("网络异常，保留现有名单", e);
   }
+
+  // 如果强行传了名字（比如她在加入界面输入了谌莹）
+  if (forcedName) {
+    let match = DB.members.find(m => m.name === forcedName);
+    if (match) {
+      DB.currentMemberId = match.id;
+      supabase.from('members').update({ user_id: CURRENT_USER_ID }).eq('id', match.id).then(()=>{}).catch(()=>{});
+      saveLocalCache();
+      return;
+    }
+  }
+
+  // 如果没指定名字，且当前身份无效，重新选一个
+  if (!DB.currentMemberId || !DB.members.some(m => m.id === DB.currentMemberId)) {
+    if (DB.members.length > 0) {
+      let mine = DB.members.find(m => String(m.user_id).toLowerCase() === String(CURRENT_USER_ID).toLowerCase());
+      if (!mine) mine = DB.members[0];
+      DB.currentMemberId = mine.id;
+    }
+  }
+  saveLocalCache();
 }
 
 
@@ -228,27 +229,12 @@ async function boot() {
       CURRENT_USER_ID = data.user.id;
     } else { CURRENT_USER_ID = user.id; }
 
-        // 【终极测试】：直接去 members 表查所有人
-    const { data: allMems, error: allErr } = await supabase.from('members').select('*');
-    if (allErr) {
-      alert("严重错误：数据库拒绝查询！错误信息：\n" + allErr.message + "\n请检查Supabase RLS权限！");
-      return;
-    }
-    console.log("数据库里真实的所有成员：", allMems);
+         const { data: mem } = await supabase.from('members').select('space_id').eq('user_id', CURRENT_USER_ID).maybeSingle();
+    if(!mem) {
+      $('#loading-screen').style.display = 'none';
+      UI.view = 'onboard'; render(); return;
+    }  
     
-    if (!allMems || allMems.length === 0) {
-      alert("数据库 members 表竟然是空的！");
-      return;
-    }
-    
-    // 强行找到属于你的那行
-    const mem = allMems.find(m => String(m.user_id).toLowerCase() === String(CURRENT_USER_ID).toLowerCase());
-    if (!mem) {
-      alert("设备身份与数据库里记录的不匹配！\n请用邀请码重新登录！");
-      localStorage.clear();
-      location.reload();
-      return;
-    }
     if(!mem) {
       $('#loading-screen').style.display = 'none';
       UI.view = 'onboard'; render(); return;
@@ -796,7 +782,7 @@ document.addEventListener('click', async function(e){
     if(!code||!nm||!pwd){showToast('请填写完整信息');return;}
     
     const btn = el; btn.textContent = '验证中...'; btn.disabled = true;
-      try{
+        try{
       const { data: spId, error: e1 } = await supabase.rpc('join_space_smart', {
         p_invite_code: code, p_name: nm, p_password: pwd
       });
@@ -812,27 +798,26 @@ document.addEventListener('click', async function(e){
         DB = def();
       }
       
-      // 【致命关键】：强行删掉 app_state 带来的旧名单！
-      delete DB.members; 
+      // 强行删掉可能残留的脏身份
       DB.currentMemberId = null; 
-      DB.members = []; 
-      saveLocalCache(); 
+      if (!DB.members) DB.members = [];
       
       const { data: { user } } = await supabase.auth.getUser();
       if (user) CURRENT_USER_ID = user.id;
 
-      // 去 members 表拉取真实两人名单
+      // 去查真实名单
       await refreshMembers(nm); 
       
-      // 兜底：如果还是没匹配上，强行把当前身份设为查出来的最后一个（也就是她）
-      if (!DB.currentMemberId && DB.members.length > 0) {
-         const match = DB.members.find(m => m.name === nm) || DB.members[DB.members.length - 1];
-         DB.currentMemberId = match.id;
+      // 【究极兜底】：如果因为网络问题没查到名单，强行用她的名字造一个身份！
+      if (!DB.currentMemberId) {
+        DB.members = [{ id: CURRENT_USER_ID, name: nm, userId: CURRENT_USER_ID }];
+        DB.currentMemberId = CURRENT_USER_ID;
+        saveLocalCache();
       }
 
       UI.view='main'; UI.tab='today'; applyTheme(); render(); subscribeRealtime();
     }catch(err){ alert(err.message); btn.textContent='进入空间'; btn.disabled=false; }
-    return;
+    return;  
   }
 
   if(a==='tab'){UI.tab=el.dataset.tab;UI.drawer=null;render();return;}
