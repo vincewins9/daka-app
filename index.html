@@ -147,56 +147,36 @@ async function flushSave() {
   if(!SPACE_ID || !CURRENT_USER_ID) return;
   const patch = pendingPatch; pendingPatch = {};
   
-  // 【修复】：深拷贝一份数据，删除 currentMemberId，绝不把“我是谁”传上云端
   const safePatch = JSON.parse(JSON.stringify(patch));
   delete safePatch.currentMemberId; 
+  delete safePatch.members; // 👈 新增这一行：绝不把名单传上云端
 
   const { error } = await supabase.rpc('merge_app_state', { p_space_id: SPACE_ID, p_patch: safePatch });
   if(error) { console.error('同步失败', error); pendingPatch = Object.assign(patch, pendingPatch); }
 }
-
 async function refreshMembers(){
   if(!SPACE_ID) return;
   const { data: mems } = await supabase.from('members').select('id, user_id, name, wechat').eq('space_id', SPACE_ID);
   if(!mems || mems.length === 0) return;
   
+  // 直接使用表里的真实两人数据
   DB.members = mems.map(m=>({id:m.id, name:m.name, wechat:m.wechat, userId:m.user_id}));
   
-  // 1. 严格根据当前设备的真实登录 ID 匹配
+  // 严格根据当前设备的 auth.uid() 认人
   let mine = mems.find(m => String(m.user_id).toLowerCase() === String(CURRENT_USER_ID).toLowerCase());
   
-  // 2. 如果找不到，看看本地缓存里的 ID 在不在成员列表里
-  if(!mine && DB.currentMemberId) {
-    const cachedUser = mems.find(m => m.id === DB.currentMemberId);
-    // 【绝对关键】：只有这个账号从未被绑定过 (user_id为空)，才允许设备绑定
-    // 只要它绑过别人的 user_id，就绝对不抢！
-    if(cachedUser && !cachedUser.user_id) {
-      mine = cachedUser;
-      // 后台静默绑定，不卡主线程
-      supabase.from('members').update({ user_id: CURRENT_USER_ID }).eq('id', mine.id).then(()=>{}).catch(()=>{});
-    }
+  if(mine) {
+    DB.currentMemberId = mine.id;
+    saveLocalCache();
+  } else {
+    // 找不到不乱认，就保持原样等用户切换
+    console.warn("身份未匹配，保持同步中");
   }
-  
-  if(!mine) {
-    // 【关键容错】：如果网络波动没匹配上，但本地已经有身份，千万别弹窗，直接用本地的
-    if(DB.currentMemberId) {
-      const cachedUser = mems.find(m => m.id === DB.currentMemberId);
-      if(cachedUser) { mine = cachedUser; }
-    }
-  }
-
-  if(!mine) {
-    // 如果实在找不到，且本地也没有，才报错
-    alert("当前设备未绑定身份，请重新用邀请码和密码登录。");
-    return;
-  }
-
-  DB.currentMemberId = mine.id;
-  saveLocalCache();
   
   const { data: sp } = await supabase.from('spaces').select('name, invite_code').eq('id', SPACE_ID).single();
   if(sp){ DB.space = DB.space || {}; DB.space.name = sp.name; DB.space.inviteCode = sp.invite_code; }
 }
+
 
 let rtChannel = null;
 function subscribeRealtime() {
@@ -204,16 +184,15 @@ function subscribeRealtime() {
   rtChannel = supabase.channel('state-'+SPACE_ID).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'app_state', filter: 'space_id=eq.'+SPACE_ID }, payload => {
     if(payload.new.updated_by === CURRENT_USER_ID) return;
     
-    // 【修复】：收到推送时，先备份自己的本地身份 ID
     const myId = DB.currentMemberId; 
+    const myMems = DB.members; // 👈 备份真实名单
     
     DB = Object.assign(def(), payload.new.data);
-    
-    // 【修复】：把云端数据覆盖后，重新把自己的 ID 塞回去
     DB.currentMemberId = myId; 
+    DB.members = myMems; // 👈 塞回真实名单，绝对不让脏数据覆盖！
     
     saveLocalCache();
-    refreshMembers().then(()=>{ applyTheme(); render(); });
+    render(); // 直接渲染，不用再等网络去请求了
   }).subscribe();
 }
 
@@ -772,13 +751,15 @@ document.addEventListener('click', async function(e){
       });
       if(e1) throw new Error(e1.message);
 
-      SPACE_ID = spId; loadLocalCache();
-     const { data: row } = await supabase.from('app_state').select('data').eq('space_id', SPACE_ID).single();
+      SPACE_ID = spId; 
+      localStorage.removeItem('jryjy_cache_'+SPACE_ID); // 清空旧缓存
+      const { data: row } = await supabase.from('app_state').select('data').eq('space_id', SPACE_ID).single();
       if(row && row.data) { 
         DB = Object.assign(def(), row.data); 
-        DB.currentMemberId = null; // 新设备加入，必须清空旧身份，防止变成对方
+        DB.currentMemberId = null; // 清空身份
+        DB.members = []; // 👈 清空云端拉下来的旧名单！
         saveLocalCache(); 
-      }  
+      }
       await refreshMembers(); UI.view='main'; UI.tab='today'; applyTheme(); render(); subscribeRealtime();
     }catch(err){ alert(err.message); btn.textContent='进入空间'; btn.disabled=false; }
     return;
