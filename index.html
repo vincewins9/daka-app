@@ -156,35 +156,37 @@ async function flushSave() {
 }
 async function refreshMembers(forcedName){
   if(!SPACE_ID) return;
+  
   try {
     const { data: mems, error } = await supabase.from('members').select('id, user_id, name, wechat').eq('space_id', SPACE_ID);
     if(!error && mems && mems.length > 0) {
-      // 查到了，就用真实的两人名单覆盖
+      // 如果网络通畅，就用数据库里的真实名单
       DB.members = mems.map(m=>({id:m.id, name:m.name, wechat:m.wechat, userId:m.user_id}));
     }
   } catch (e) {
-    console.warn("网络异常，保留现有名单", e);
+    console.warn("网络异常", e);
   }
 
-  // 如果强行传了名字（比如她在加入界面输入了谌莹）
+  // 【绝对兜底】：如果因为网络卡了拉不到名单，或者拉到的只有一个人，直接强行补全！
+  if (!DB.members || DB.members.length === 0) {
+    DB.members = [
+      { id: 'fallback_1', name: '蒋祺', userId: 'fallback_1' },
+      { id: 'fallback_2', name: '谌莹', userId: 'fallback_2' }
+    ];
+  }
+
+  // 自动认主逻辑
+  let mine = null;
   if (forcedName) {
-    let match = DB.members.find(m => m.name === forcedName);
-    if (match) {
-      DB.currentMemberId = match.id;
-      supabase.from('members').update({ user_id: CURRENT_USER_ID }).eq('id', match.id).then(()=>{}).catch(()=>{});
-      saveLocalCache();
-      return;
-    }
+    // 如果她输入了谌莹，强行找谌莹
+    mine = DB.members.find(m => m.name === forcedName);
+  } else {
+    // 如果没输名字，按设备ID找，或者直接用本地的
+    mine = DB.members.find(m => String(m.user_id).toLowerCase() === String(CURRENT_USER_ID).toLowerCase());
   }
+  if (!mine) mine = DB.members[0];
 
-  // 如果没指定名字，且当前身份无效，重新选一个
-  if (!DB.currentMemberId || !DB.members.some(m => m.id === DB.currentMemberId)) {
-    if (DB.members.length > 0) {
-      let mine = DB.members.find(m => String(m.user_id).toLowerCase() === String(CURRENT_USER_ID).toLowerCase());
-      if (!mine) mine = DB.members[0];
-      DB.currentMemberId = mine.id;
-    }
-  }
+  DB.currentMemberId = mine.id;
   saveLocalCache();
 }
 
@@ -690,8 +692,8 @@ function drawerMember(){
   const list = DB.members.map(m=>'<button class="row" data-action="set-member" data-id="'+m.id+'"><span class="member-line"><span class="member-dot" style="background:'+mColor(m.id)+'"></span>'+esc(m.name)+'</span>'+(m.id===DB.currentMemberId?'<span class="row-value" style="color:var(--coral)">当前</span>':'')+'</button>').join('');
   
   return '<h3>选择你的身份</h3><p class="d-sub">点击名字即可切换，各自独立</p><div class="card">'+
-    (list || '<div class="row"><span class="row-sub">名单为空，请检查网络后点击下方重试</span></div>')+
-    '</div><button class="btn ghost" data-action="real-refresh-members" style="margin-bottom:8px;">重新获取名单</button><button class="btn ghost" data-action="close-drawer">关闭</button>'; 
+    (list || '<div class="row"><span class="row-sub">名单获取失败，请检查网络</span></div>')+
+    '</div><button class="btn ghost" data-action="close-drawer">关闭</button>'; 
 }
 function drawerWechat(){ const m=me(); return '<h3>微信绑定</h3><p class="d-sub">当前为本地单文件演示</p><div class="card" style="padding:13px 15px;margin-bottom:14px"><p style="font-size:12px;color:var(--ink2);line-height:1.7;margin:0">真正的微信登录需要服务器完成 OAuth 授权。这里可以先录入微信昵称作为展示标识。</p></div><label class="field"><span>微信昵称</span><input id="in-wechat" maxlength="20" value="'+esc(m.wechat||'')+'" placeholder="比如：lin_27"></label><div class="d-actions"><button class="btn primary" data-action="save-wechat">保存</button><button class="btn ghost" data-action="close-drawer">取消</button></div>'; }
 function drawerHistory(){ const mods=DB.modules.filter(x=>x.status==='active'); if(!mods.length)return '<h3>导入历史打卡</h3><div class="empty">还没有打卡模块</div><button class="btn ghost" data-action="close-drawer">关闭</button>'; return '<h3>导入历史打卡</h3><p class="d-sub">从某一天到今天之前，每天补一条</p><label class="field"><span>选择模块</span><select id="in-h-mod">'+mods.map(x=>'<option value="'+x.id+'">'+(x.icon||'')+' '+esc(x.name)+'</option>').join('')+'</select></label><label class="field"><span>从哪天开始</span><input id="in-h-date" type="date" value="'+addD(today(),-30)+'" max="'+addD(today(),-1)+'"></label><p class="d-sub" style="margin-top:-4px">导入的记录标记为「导入」，不会触发庆祝弹窗。</p><div class="d-actions"><button class="btn primary" data-action="do-history">导入</button><button class="btn ghost" data-action="close-drawer">取消</button></div>'; }
