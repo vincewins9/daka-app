@@ -228,7 +228,27 @@ async function boot() {
       CURRENT_USER_ID = data.user.id;
     } else { CURRENT_USER_ID = user.id; }
 
-    const { data: mem } = await supabase.from('members').select('space_id').eq('user_id', CURRENT_USER_ID).maybeSingle();
+        // 【终极测试】：直接去 members 表查所有人
+    const { data: allMems, error: allErr } = await supabase.from('members').select('*');
+    if (allErr) {
+      alert("严重错误：数据库拒绝查询！错误信息：\n" + allErr.message + "\n请检查Supabase RLS权限！");
+      return;
+    }
+    console.log("数据库里真实的所有成员：", allMems);
+    
+    if (!allMems || allMems.length === 0) {
+      alert("数据库 members 表竟然是空的！");
+      return;
+    }
+    
+    // 强行找到属于你的那行
+    const mem = allMems.find(m => String(m.user_id).toLowerCase() === String(CURRENT_USER_ID).toLowerCase());
+    if (!mem) {
+      alert("设备身份与数据库里记录的不匹配！\n请用邀请码重新登录！");
+      localStorage.clear();
+      location.reload();
+      return;
+    }
     if(!mem) {
       $('#loading-screen').style.display = 'none';
       UI.view = 'onboard'; render(); return;
