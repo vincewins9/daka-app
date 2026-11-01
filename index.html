@@ -156,35 +156,44 @@ async function flushSave() {
 }
 async function refreshMembers(forcedName){
   if(!SPACE_ID) return;
-  try {
-    const { data: mems } = await supabase.from('members').select('id, user_id, name, wechat').eq('space_id', SPACE_ID);
-    
-    // 只有确实拿到了有效数据，才更新本地
-    if(mems && mems.length > 0) {
-      DB.members = mems.map(m=>({id:m.id, name:m.name, wechat:m.wechat, userId:m.user_id}));
-      
-      let mine = mems.find(m => String(m.user_id).toLowerCase() === String(CURRENT_USER_ID).toLowerCase());
-      
-      if (!mine && forcedName) {
-        mine = mems.find(m => m.name === forcedName);
-        if (mine) supabase.from('members').update({ user_id: CURRENT_USER_ID }).eq('id', mine.id).then(()=>{}).catch(()=>{});
-      }
-
-      if (!mine && DB.currentMemberId) {
-        mine = mems.find(m => m.id === DB.currentMemberId);
-      }
-
-      if (!mine) mine = DB.members[0]; // 兜底
-
-      if (mine) DB.currentMemberId = mine.id;
-      saveLocalCache();
-    } else {
-      // 云端空，保留本地
-      console.warn("云端查不到名单，保留本地缓存");
-    }
-  } catch (e) {
-    console.warn("网络异常，保留本地缓存", e);
+  console.log("正在从数据库拉取成员名单...");
+  
+  const { data: mems, error } = await supabase.from('members').select('id, name, user_id').eq('space_id', SPACE_ID);
+  
+  if (error) {
+    alert("拉取名单失败！错误信息：\n" + error.message);
+    return;
   }
+  
+  if (!mems || mems.length === 0) {
+    alert("数据库里查不到你们的名字！请确认数据还在不在。");
+    return;
+  }
+
+  // 直接用数据库里的数据覆盖内存
+  DB.members = mems.map(m=>({id:m.id, name:m.name, userId:m.user_id}));
+  
+  // 强制指定当前身份
+  let mine = null;
+  if (forcedName) {
+    // 如果刚输入了名字（她登录的情况），死磕这个名字
+    mine = DB.members.find(m => m.name === forcedName);
+  } else {
+    // 如果是日常刷新，按设备的 user_id 找
+    mine = DB.members.find(m => String(m.user_id).toLowerCase() === String(CURRENT_USER_ID).toLowerCase());
+  }
+
+  // 如果都找不到，默认选第一个，防止卡死
+  if (!mine) mine = DB.members[0];
+
+  DB.currentMemberId = mine.id;
+  
+  // 如果按名字找到了她，强行把她的名字绑定到她现在的设备上
+  if (forcedName && mine.name === forcedName) {
+    supabase.from('members').update({ user_id: CURRENT_USER_ID }).eq('id', mine.id).then(()=>{}).catch(()=>{});
+  }
+
+  saveLocalCache();
 }
 
 
@@ -243,26 +252,18 @@ async function boot() {
        UI.view = 'main'; applyTheme(); render(); 
     }
 
-    try {
-         const { data: row } = await supabase.from('app_state').select('data').eq('space_id', SPACE_ID).single();
-    if(row && row.data && Object.keys(row.data).length) {
-      // 恢复本地记忆
-      let localId = null;
-      let localMems = DB.members; 
-      try { const c = localStorage.getItem('jryjy_cache_'+SPACE_ID); if(c) { const p = JSON.parse(c); localId = p.currentMemberId; if(p.members) localMems = p.members; } } catch(e){}
+      try {
+      const { data: row } = await supabase.from('app_state').select('data').eq('space_id', SPACE_ID).single();
+      if(row && row.data && Object.keys(row.data).length) {
+        // 只取打卡、日记等数据，彻底抛弃里面可能残留的旧名单
+        DB = Object.assign(def(), row.data);
+        delete DB.members; 
+      }
       
-      DB = Object.assign(def(), row.data);
-      DB.currentMemberId = localId; 
-      DB.members = localMems; // 【死保名单】：优先用本地名单
+      // 直接去 members 表拉活人
+      await refreshMembers(); 
       
-      saveLocalCache();
-    }
-    
-    // 去表里拉真实的两人，如果失败会自动保留上一步的本地名单
-    await refreshMembers();    
-    } catch(e) { 
-       console.warn("网络慢，使用本地数据", e); 
-    }
+    } catch(e) { console.error("拉取云端数据失败", e); }
 
     $('#loading-screen').style.display = 'none';
     UI.view = 'main'; applyTheme(); render(); subscribeRealtime();
