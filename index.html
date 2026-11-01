@@ -158,33 +158,27 @@ async function refreshMembers(forcedName){
   if(!SPACE_ID) return;
   try {
     const { data: mems } = await supabase.from('members').select('id, user_id, name, wechat').eq('space_id', SPACE_ID);
+    
+    // 如果查到了真实名单，立刻覆盖本地！
     if(mems && mems.length > 0) {
-      // 查到了，就用真实的覆盖
       DB.members = mems.map(m=>({id:m.id, name:m.name, wechat:m.wechat, userId:m.user_id}));
       
       let mine = mems.find(m => String(m.user_id).toLowerCase() === String(CURRENT_USER_ID).toLowerCase());
       
-      // 如果传了名字（刚用邀请码加入），强行锁定这个名字！
       if (!mine && forcedName) {
         mine = mems.find(m => m.name === forcedName);
-        if (mine) {
-          supabase.from('members').update({ user_id: CURRENT_USER_ID }).eq('id', mine.id).then(()=>{}).catch(()=>{});
-        }
+        if (mine) supabase.from('members').update({ user_id: CURRENT_USER_ID }).eq('id', mine.id).then(()=>{}).catch(()=>{});
       }
 
       if (mine) {
         DB.currentMemberId = mine.id;
       } else if (!DB.currentMemberId || !DB.members.some(m => m.id === DB.currentMemberId)) {
-        // 如果匹配不上，默认选第一个（防止你被清空卡死）
         DB.currentMemberId = DB.members[0].id;
       }
       saveLocalCache();
-    } else {
-       // 【重点】：如果云端返回空，绝不洗白本地！保留你现有的名单！
-       console.warn("云端返回空名单，保留本地缓存");
     }
   } catch (e) {
-    console.warn("网络请求失败，保留本地缓存", e);
+    console.warn("查询失败", e);
   }
 }
 
@@ -245,16 +239,22 @@ async function boot() {
     }
 
     try {
-       const { data: row } = await supabase.from('app_state').select('data').eq('space_id', SPACE_ID).single();
-       if(row && row.data && Object.keys(row.data).length) {
-         const localId = DB.currentMemberId;
-         const localMems = DB.members;
-         DB = Object.assign(def(), row.data);
-         DB.currentMemberId = localId; 
-         if (localMems && localMems.length > 0) DB.members = localMems; // 优先用本地名单
-         saveLocalCache();
-       }
-       await refreshMembers(); 
+         const { data: row } = await supabase.from('app_state').select('data').eq('space_id', SPACE_ID).single();
+    if(row && row.data && Object.keys(row.data).length) {
+      let localId = null;
+      try { const c = localStorage.getItem('jryjy_cache_'+SPACE_ID); if(c) localId = JSON.parse(c).currentMemberId; } catch(e){}
+      
+      DB = Object.assign(def(), row.data);
+      
+      // 【致命关键】：绝对不相信 app_state 里的名单，强行删掉！
+      delete DB.members; 
+      DB.members = []; 
+      DB.currentMemberId = localId; 
+      saveLocalCache();
+    }
+    
+    // 不管有没有本地缓存，都去 members 表重新拉一次真实名单
+    await refreshMembers();  
     } catch(e) { 
        console.warn("网络慢，使用本地数据", e); 
     }
@@ -770,7 +770,7 @@ document.addEventListener('click', async function(e){
     if(!code||!nm||!pwd){showToast('请填写完整信息');return;}
     
     const btn = el; btn.textContent = '验证中...'; btn.disabled = true;
-    try{
+      try{
       const { data: spId, error: e1 } = await supabase.rpc('join_space_smart', {
         p_invite_code: code, p_name: nm, p_password: pwd
       });
@@ -785,6 +785,9 @@ document.addEventListener('click', async function(e){
       } else {
         DB = def();
       }
+      
+      // 【致命关键】：强行删掉 app_state 带来的旧名单！
+      delete DB.members; 
       DB.currentMemberId = null; 
       DB.members = []; 
       saveLocalCache(); 
@@ -792,13 +795,13 @@ document.addEventListener('click', async function(e){
       const { data: { user } } = await supabase.auth.getUser();
       if (user) CURRENT_USER_ID = user.id;
 
-      // 强制传名字认主
+      // 去 members 表拉取真实两人名单
       await refreshMembers(nm); 
       
-      // 如果还没认上，本地兜底
+      // 兜底：如果还是没匹配上，强行把当前身份设为查出来的最后一个（也就是她）
       if (!DB.currentMemberId && DB.members.length > 0) {
-         const match = DB.members.find(m => m.name === nm);
-         if (match) DB.currentMemberId = match.id;
+         const match = DB.members.find(m => m.name === nm) || DB.members[DB.members.length - 1];
+         DB.currentMemberId = match.id;
       }
 
       UI.view='main'; UI.tab='today'; applyTheme(); render(); subscribeRealtime();
