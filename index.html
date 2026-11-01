@@ -154,27 +154,38 @@ async function flushSave() {
   const { error } = await supabase.rpc('merge_app_state', { p_space_id: SPACE_ID, p_patch: safePatch });
   if(error) { console.error('同步失败', error); pendingPatch = Object.assign(patch, pendingPatch); }
 }
-async function refreshMembers(){
+async function refreshMembers(forcedName){
   if(!SPACE_ID) return;
-  const { data: mems } = await supabase.from('members').select('id, user_id, name, wechat').eq('space_id', SPACE_ID);
-  if(!mems || mems.length === 0) return;
-  
-  // 直接使用表里的真实两人数据
-  DB.members = mems.map(m=>({id:m.id, name:m.name, wechat:m.wechat, userId:m.user_id}));
-  
-  // 严格根据当前设备的 auth.uid() 认人
-  let mine = mems.find(m => String(m.user_id).toLowerCase() === String(CURRENT_USER_ID).toLowerCase());
-  
-  if(mine) {
-    DB.currentMemberId = mine.id;
-    saveLocalCache();
-  } else {
-    // 找不到不乱认，就保持原样等用户切换
-    console.warn("身份未匹配，保持同步中");
+  try {
+    const { data: mems } = await supabase.from('members').select('id, user_id, name, wechat').eq('space_id', SPACE_ID);
+    if(mems && mems.length > 0) {
+      // 查到了，就用真实的覆盖
+      DB.members = mems.map(m=>({id:m.id, name:m.name, wechat:m.wechat, userId:m.user_id}));
+      
+      let mine = mems.find(m => String(m.user_id).toLowerCase() === String(CURRENT_USER_ID).toLowerCase());
+      
+      // 如果传了名字（刚用邀请码加入），强行锁定这个名字！
+      if (!mine && forcedName) {
+        mine = mems.find(m => m.name === forcedName);
+        if (mine) {
+          supabase.from('members').update({ user_id: CURRENT_USER_ID }).eq('id', mine.id).then(()=>{}).catch(()=>{});
+        }
+      }
+
+      if (mine) {
+        DB.currentMemberId = mine.id;
+      } else if (!DB.currentMemberId || !DB.members.some(m => m.id === DB.currentMemberId)) {
+        // 如果匹配不上，默认选第一个（防止你被清空卡死）
+        DB.currentMemberId = DB.members[0].id;
+      }
+      saveLocalCache();
+    } else {
+       // 【重点】：如果云端返回空，绝不洗白本地！保留你现有的名单！
+       console.warn("云端返回空名单，保留本地缓存");
+    }
+  } catch (e) {
+    console.warn("网络请求失败，保留本地缓存", e);
   }
-  
-  const { data: sp } = await supabase.from('spaces').select('name, invite_code').eq('id', SPACE_ID).single();
-  if(sp){ DB.space = DB.space || {}; DB.space.name = sp.name; DB.space.inviteCode = sp.invite_code; }
 }
 
 
@@ -224,24 +235,29 @@ async function boot() {
       UI.view = 'onboard'; render(); return;
     }
 
-    SPACE_ID = mem.space_id;
+      SPACE_ID = mem.space_id;
     loadLocalCache(); 
     
-    // 【关键】：把提前渲染的代码彻底删掉，绝对不抢跑！
-
-       const { data: row } = await supabase.from('app_state').select('data').eq('space_id', SPACE_ID).single();
-    if(row && row.data && Object.keys(row.data).length) {
-      // 先读取本地缓存，记住自己是谁
-      let localId = null;
-      try { const c = localStorage.getItem('jryjy_cache_'+SPACE_ID); if(c) localId = JSON.parse(c).currentMemberId; } catch(e){}
-      
-      DB = Object.assign(def(), row.data);
-      DB.currentMemberId = localId; // 恢复本地记忆，绝不轻易失忆！
-      saveLocalCache();
+    // 只要本地有名字，立刻渲染，不让用户干等
+    if (DB.members && DB.members.length > 0) {
+       $('#loading-screen').style.display = 'none';
+       UI.view = 'main'; applyTheme(); render(); 
     }
-    
-    // 【关键】：等身份彻底认领完，再关闭 loading 画面
-    await refreshMembers(); 
+
+    try {
+       const { data: row } = await supabase.from('app_state').select('data').eq('space_id', SPACE_ID).single();
+       if(row && row.data && Object.keys(row.data).length) {
+         const localId = DB.currentMemberId;
+         const localMems = DB.members;
+         DB = Object.assign(def(), row.data);
+         DB.currentMemberId = localId; 
+         if (localMems && localMems.length > 0) DB.members = localMems; // 优先用本地名单
+         saveLocalCache();
+       }
+       await refreshMembers(); 
+    } catch(e) { 
+       console.warn("网络慢，使用本地数据", e); 
+    }
 
     $('#loading-screen').style.display = 'none';
     UI.view = 'main'; applyTheme(); render(); subscribeRealtime();
@@ -663,7 +679,13 @@ function drawerModule(d){
   const icons=['🏃','🏋️','🧘','🚶','🚴','🤸','🌙','💧','📖','🧠','🥗','☀️','🎯','💪','🦉','🛌']; const colors=['#e8927c','#8fb896','#7c9bb8','#b89bc9','#d9a05b','#d87a95','#9bb87c','#6bb8b8'];
   return '<h3>'+(isNew?'新建打卡模块':'编辑模块')+'</h3><p class="d-sub">'+(isNew?'名字和图标之后都能改':'修改不会影响历史记录')+'</p><label class="field"><span>名称</span><input id="in-mod-name" maxlength="12" value="'+esc(mod?mod.name:'')+'" placeholder="比如：晨跑"></label><div class="field"><span>图标</span><div class="quick">'+icons.map(i=>'<button class="'+(i===icon?'sel':'')+'" data-action="pick-icon" data-icon="'+i+'" style="font-size:16px">'+i+'</button>').join('')+'</div></div><div class="field"><span>颜色</span><div class="quick">'+colors.map(c=>'<button data-action="pick-color" data-color="'+c+'" style="width:30px;height:30px;border-radius:50%;background:'+c+';padding:0;'+(c===color?'box-shadow:0 0 0 2px #fff,0 0 0 4px '+c:'')+'"></button>').join('')+'</div></div>'+(isNew?'<div class="field"><span>记录方式</span><div class="quick"><button class="'+(mtype==='number'?'sel':'')+'" data-action="pick-type" data-type="number">数值（时长/距离）</button><button class="'+(mtype==='boolean'?'sel':'')+'" data-action="pick-type" data-type="boolean">仅完成</button><button class="'+(mtype==='time'?'sel':'')+'" data-action="pick-type" data-type="time">时间（早睡/熬夜）</button></div></div><div id="metric-fields" style="'+(mtype==='boolean'||mtype==='time'?'display:none':'')+'"><div class="field"><span>数值含义</span><div style="display:flex;gap:8px"><input id="in-metric-label" maxlength="6" value="时长" placeholder="时长" style="flex:1;background:#fff;border:1.5px solid var(--line);border-radius:12px;padding:11px 13px;font-size:14px"><input id="in-metric-unit" maxlength="4" value="分钟" placeholder="分钟" style="flex:1;background:#fff;border:1.5px solid var(--line);border-radius:12px;padding:11px 13px;font-size:14px"></div></div></div>':'')+'<div class="d-actions"><button class="btn primary" data-action="save-module" data-id="'+(mod?mod.id:'')+'">'+(isNew?'创建':'保存')+'</button>'+(mod?'<button class="btn warn" data-action="delete-module" data-id="'+mod.id+'">删除模块</button>':'')+(mod?'<button class="btn ghost" data-action="archive-module" data-id="'+mod.id+'">归档（历史保留）</button>':'')+'<button class="btn ghost" data-action="close-drawer">取消</button></div>';
 }
-function drawerMember(){ return '<h3>切换身份</h3><p class="d-sub">两个人共用一台设备时使用</p><div class="card">'+DB.members.map(m=>'<button class="row" data-action="set-member" data-id="'+m.id+'"><span class="member-line"><span class="member-dot" style="background:'+mColor(m.id)+'"></span>'+esc(m.name)+(m.wechat?'<span class="wechat-tag">微信</span>':'')+'</span>'+(m.id===DB.currentMemberId?'<span class="row-value" style="color:var(--coral)">当前</span>':'')+'</button>').join('')+'</div><button class="btn ghost" data-action="close-drawer">关闭</button>'; }
+function drawerMember(){ 
+  const list = DB.members.map(m=>'<button class="row" data-action="set-member" data-id="'+m.id+'"><span class="member-line"><span class="member-dot" style="background:'+mColor(m.id)+'"></span>'+esc(m.name)+(m.wechat?'<span class="wechat-tag">微信</span>':'')+'</span>'+(m.id===DB.currentMemberId?'<span class="row-value" style="color:var(--coral)">当前</span>':'')+'</button>').join('');
+  
+  return '<h3>切换身份</h3><p class="d-sub">两个人共用一台设备时使用</p><div class="card">'+
+    (list || '<div class="row"><span class="row-sub">网络同步失败，暂无本地名单，请点击下方按钮刷新</span></div>')+
+    '</div><button class="btn ghost" data-action="force-refresh" style="margin-bottom:8px;">重新从云端同步名单</button><button class="btn ghost" data-action="close-drawer">关闭</button>'; 
+}
 function drawerWechat(){ const m=me(); return '<h3>微信绑定</h3><p class="d-sub">当前为本地单文件演示</p><div class="card" style="padding:13px 15px;margin-bottom:14px"><p style="font-size:12px;color:var(--ink2);line-height:1.7;margin:0">真正的微信登录需要服务器完成 OAuth 授权。这里可以先录入微信昵称作为展示标识。</p></div><label class="field"><span>微信昵称</span><input id="in-wechat" maxlength="20" value="'+esc(m.wechat||'')+'" placeholder="比如：lin_27"></label><div class="d-actions"><button class="btn primary" data-action="save-wechat">保存</button><button class="btn ghost" data-action="close-drawer">取消</button></div>'; }
 function drawerHistory(){ const mods=DB.modules.filter(x=>x.status==='active'); if(!mods.length)return '<h3>导入历史打卡</h3><div class="empty">还没有打卡模块</div><button class="btn ghost" data-action="close-drawer">关闭</button>'; return '<h3>导入历史打卡</h3><p class="d-sub">从某一天到今天之前，每天补一条</p><label class="field"><span>选择模块</span><select id="in-h-mod">'+mods.map(x=>'<option value="'+x.id+'">'+(x.icon||'')+' '+esc(x.name)+'</option>').join('')+'</select></label><label class="field"><span>从哪天开始</span><input id="in-h-date" type="date" value="'+addD(today(),-30)+'" max="'+addD(today(),-1)+'"></label><p class="d-sub" style="margin-top:-4px">导入的记录标记为「导入」，不会触发庆祝弹窗。</p><div class="d-actions"><button class="btn primary" data-action="do-history">导入</button><button class="btn ghost" data-action="close-drawer">取消</button></div>'; }
 function drawerMeetHistory(){ const recent=DB.meetups.slice().sort((a,b)=>b.date.localeCompare(a.date)).slice(0,12); return '<h3>补录见面日</h3><p class="d-sub">以前见过面的日子，都可以补上</p><label class="field"><span>选一个日期</span><input id="in-meet-date" type="date" value="'+addD(today(),-1)+'" max="'+today()+'"></label><button class="btn primary" data-action="meet-add-date">下一步：记录做了什么</button>'+(recent.length?'<div class="sec-title" style="margin-top:18px">最近的见面日</div>'+recent.map(x=>'<div class="rec-item"><div class="rec-main"><div class="rec-title">💗 '+humanD(x.date)+'</div>'+(x.note?`<div class="rec-sub">${esc(x.note)}</div>`:'')+'</div><button class="rec-del" data-action="meet-del" data-id="'+x.id+'" style="color:#c9707f">删除</button></div>').join(''):'')+'<div class="d-actions"><button class="btn ghost" data-action="close-drawer">关闭</button></div>'; }
@@ -755,15 +777,31 @@ document.addEventListener('click', async function(e){
       if(e1) throw new Error(e1.message);
 
       SPACE_ID = spId; 
-      localStorage.removeItem('jryjy_cache_'+SPACE_ID); // 清空旧缓存
+      localStorage.removeItem('jryjy_cache_'+SPACE_ID); 
+      
       const { data: row } = await supabase.from('app_state').select('data').eq('space_id', SPACE_ID).single();
       if(row && row.data) { 
         DB = Object.assign(def(), row.data); 
-        DB.currentMemberId = null; // 清空身份
-        DB.members = []; // 👈 清空云端拉下来的旧名单！
-        saveLocalCache(); 
+      } else {
+        DB = def();
       }
-      await refreshMembers(); UI.view='main'; UI.tab='today'; applyTheme(); render(); subscribeRealtime();
+      DB.currentMemberId = null; 
+      DB.members = []; 
+      saveLocalCache(); 
+      
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) CURRENT_USER_ID = user.id;
+
+      // 强制传名字认主
+      await refreshMembers(nm); 
+      
+      // 如果还没认上，本地兜底
+      if (!DB.currentMemberId && DB.members.length > 0) {
+         const match = DB.members.find(m => m.name === nm);
+         if (match) DB.currentMemberId = match.id;
+      }
+
+      UI.view='main'; UI.tab='today'; applyTheme(); render(); subscribeRealtime();
     }catch(err){ alert(err.message); btn.textContent='进入空间'; btn.disabled=false; }
     return;
   }
