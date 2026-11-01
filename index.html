@@ -159,7 +159,7 @@ async function refreshMembers(forcedName){
   try {
     const { data: mems } = await supabase.from('members').select('id, user_id, name, wechat').eq('space_id', SPACE_ID);
     
-    // 如果查到了真实名单，立刻覆盖本地！
+    // 只有确实拿到了有效数据，才更新本地
     if(mems && mems.length > 0) {
       DB.members = mems.map(m=>({id:m.id, name:m.name, wechat:m.wechat, userId:m.user_id}));
       
@@ -170,15 +170,20 @@ async function refreshMembers(forcedName){
         if (mine) supabase.from('members').update({ user_id: CURRENT_USER_ID }).eq('id', mine.id).then(()=>{}).catch(()=>{});
       }
 
-      if (mine) {
-        DB.currentMemberId = mine.id;
-      } else if (!DB.currentMemberId || !DB.members.some(m => m.id === DB.currentMemberId)) {
-        DB.currentMemberId = DB.members[0].id;
+      if (!mine && DB.currentMemberId) {
+        mine = mems.find(m => m.id === DB.currentMemberId);
       }
+
+      if (!mine) mine = DB.members[0]; // 兜底
+
+      if (mine) DB.currentMemberId = mine.id;
       saveLocalCache();
+    } else {
+      // 云端空，保留本地
+      console.warn("云端查不到名单，保留本地缓存");
     }
   } catch (e) {
-    console.warn("查询失败", e);
+    console.warn("网络异常，保留本地缓存", e);
   }
 }
 
@@ -241,20 +246,20 @@ async function boot() {
     try {
          const { data: row } = await supabase.from('app_state').select('data').eq('space_id', SPACE_ID).single();
     if(row && row.data && Object.keys(row.data).length) {
+      // 恢复本地记忆
       let localId = null;
-      try { const c = localStorage.getItem('jryjy_cache_'+SPACE_ID); if(c) localId = JSON.parse(c).currentMemberId; } catch(e){}
+      let localMems = DB.members; 
+      try { const c = localStorage.getItem('jryjy_cache_'+SPACE_ID); if(c) { const p = JSON.parse(c); localId = p.currentMemberId; if(p.members) localMems = p.members; } } catch(e){}
       
       DB = Object.assign(def(), row.data);
-      
-      // 【致命关键】：绝对不相信 app_state 里的名单，强行删掉！
-      delete DB.members; 
-      DB.members = []; 
       DB.currentMemberId = localId; 
+      DB.members = localMems; // 【死保名单】：优先用本地名单
+      
       saveLocalCache();
     }
     
-    // 不管有没有本地缓存，都去 members 表重新拉一次真实名单
-    await refreshMembers();  
+    // 去表里拉真实的两人，如果失败会自动保留上一步的本地名单
+    await refreshMembers();    
     } catch(e) { 
        console.warn("网络慢，使用本地数据", e); 
     }
@@ -270,7 +275,11 @@ async function boot() {
 const COLORS=['#e8927c','#7c9bb8'];
 const mIdx=id=>DB.members.findIndex(m=>m.id===id);
 const mColor=id=>COLORS[mIdx(id)]||COLORS[0];
-const me=()=>DB.members.find(m=>m.id===DB.currentMemberId) || { name: '同步中...', id: 'none' };
+const me=()=>{
+  let m = DB.members.find(x=>x.id===DB.currentMemberId);
+  if (!m && DB.members.length > 0) { m = DB.members[0]; DB.currentMemberId = m.id; }
+  return m || { name: '同步中...', id: 'none' };
+};
 const partner=()=>DB.members.find(m=>m.id!==DB.currentMemberId);
 const hasMet=d=>DB.meetups.some(x=>x.date===d);
 function dSet(mid){const s=new Set();for(const c of DB.checkins)if(c.memberId===mid)s.add(c.date);return s;}
