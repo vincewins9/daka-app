@@ -52,8 +52,8 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer;pad
 <script type="module">
 
 
-// 版本号：登录首页和设置页都会显示，手机上看到 v3.1 才说明跑的是新代码（防止旧缓存假装新代码）
-const APP_VERSION = 'v3.1';
+// 版本号：登录首页和设置页都会显示，手机上看到 v3.2 才说明跑的是新代码（防止旧缓存假装新代码）
+const APP_VERSION = 'v3.2';
 // 换成你绑定的自定义域名（如果 sb.betteragain.cn 还没变绿，可以先用右边的 workers.dev 网址测试）
 const SUPABASE_URL = 'https://sb.betteragain.cn';  
 const SUPABASE_ANON_KEY = 'sb_publishable_EDbc_4y4rRQ44uOusaxk4w_Pb_LSQVm';
@@ -722,7 +722,7 @@ function renderTabbar(){
 function renderDrawer(){
   if(!UI.drawer)return ''; const d=UI.drawer; let body='';
   if(d.type==='checkin')body=drawerCheckin(d); else if(d.type==='day')body=drawerDay(d); else if(d.type==='module')body=drawerModule(d);
-  else if(d.type==='member')body=drawerMember(); else if(d.type==='history')body=drawerHistory();
+  else if(d.type==='member')body=drawerMember(); else if(d.type==='member-auth')body=drawerMemberAuth(); else if(d.type==='history')body=drawerHistory();
   else if(d.type==='meet-history')body=drawerMeetHistory(); else if(d.type==='backfill')body=drawerBackfill(d); else if(d.type==='archived')body=drawerArchived();
   else if(d.type==='journal')body=drawerJournal(d); else if(d.type==='countdown')body=drawerCountdown(d); else if(d.type==='place')body=drawerPlace(d);
   else if(d.type==='todo')body=drawerTodo(d); else if(d.type==='goal')body=drawerGoal(d); else if(d.type==='cat-edit')body=drawerCatEdit(d);
@@ -768,9 +768,17 @@ function drawerModule(d){
 function drawerMember(){ 
   const list = DB.members.map(m=>'<button class="row" data-action="set-member" data-id="'+m.id+'"><span class="member-line"><span class="member-dot" style="background:'+mColor(m.id)+'"></span>'+esc(m.name)+'</span>'+(m.id===DB.currentMemberId?'<span class="row-value" style="color:var(--coral)">当前</span>':'')+'</button>').join('');
   
-  return '<h3>选择你的身份</h3><p class="d-sub">本机临时切换；要换账号请到 设置→退出登录 后重新登录</p><div class="card">'+
+  return '<h3>选择你的身份</h3><p class="d-sub">切到对方身份需要验证 TA 设置的密码</p><div class="card">'+
     (list || '<div class="row"><span class="row-sub">名单获取失败，请检查网络</span></div>')+
     '</div><button class="btn ghost" data-action="close-drawer">关闭</button>'; 
+}
+function drawerMemberAuth(){ 
+  const target = DB.members.find(x=>x.id===UI.tmp.pendingMemberId);
+  const name = target ? target.name : '对方';
+  return '<h3>验证身份</h3><p class="d-sub">切换到「'+esc(name)+'」需要输入 TA 设置的密码</p>'+
+    '<label class="field"><span>TA 的密码</span><input id="in-member-pwd" type="password" maxlength="20" placeholder="输入 '+esc(name)+' 的密码"></label>'+
+    '<div class="d-actions"><button class="btn primary" data-action="do-member-auth" data-id="'+(UI.tmp.pendingMemberId||'')+'">验证并切换</button>'+
+    '<button class="btn ghost" data-action="close-drawer">取消</button></div>'; 
 }
 function drawerHistory(){ const mods=DB.modules.filter(x=>x.status==='active'); if(!mods.length)return '<h3>导入历史打卡</h3><div class="empty">还没有打卡模块</div><button class="btn ghost" data-action="close-drawer">关闭</button>'; return '<h3>导入历史打卡</h3><p class="d-sub">从某一天到今天之前，每天补一条</p><label class="field"><span>选择模块</span><select id="in-h-mod">'+mods.map(x=>'<option value="'+x.id+'">'+(x.icon||'')+' '+esc(x.name)+'</option>').join('')+'</select></label><label class="field"><span>从哪天开始</span><input id="in-h-date" type="date" value="'+addD(today(),-30)+'" max="'+addD(today(),-1)+'"></label><p class="d-sub" style="margin-top:-4px">导入的记录标记为「导入」，不会触发庆祝弹窗。</p><div class="d-actions"><button class="btn primary" data-action="do-history">导入</button><button class="btn ghost" data-action="close-drawer">取消</button></div>'; }
 function drawerMeetHistory(){ const recent=DB.meetups.slice().sort((a,b)=>b.date.localeCompare(a.date)).slice(0,12); return '<h3>补录见面日</h3><p class="d-sub">以前见过面的日子，都可以补上</p><label class="field"><span>选一个日期</span><input id="in-meet-date" type="date" value="'+addD(today(),-1)+'" max="'+today()+'"></label><button class="btn primary" data-action="meet-add-date">下一步：记录做了什么</button>'+(recent.length?'<div class="sec-title" style="margin-top:18px">最近的见面日</div>'+recent.map(x=>'<div class="rec-item"><div class="rec-main"><div class="rec-title">💗 '+humanD(x.date)+'</div>'+(x.note?`<div class="rec-sub">${esc(x.note)}</div>`:'')+'</div><button class="rec-del" data-action="meet-del" data-id="'+x.id+'" style="color:#c9707f">删除</button></div>').join(''):'')+'<div class="d-actions"><button class="btn ghost" data-action="close-drawer">关闭</button></div>'; }
@@ -934,7 +942,33 @@ document.addEventListener('click', async function(e){
   if(a==='close-celebrate'){UI.celebrate=null;render();return;}
 
   if(a==='switch-member'){UI.drawer={type:'member'};render();return;}
-  if(a==='set-member'){DB.currentMemberId=el.dataset.id;save();UI.drawer=null;render();return;}
+  if(a==='set-member'){
+    const tid=el.dataset.id;
+    if(tid===DB.currentMemberId){UI.drawer=null;render();return;} // 点自己：无事发生
+    UI.tmp.pendingMemberId=tid; UI.drawer={type:'member-auth'}; render(); return;
+  }
+  if(a==='do-member-auth'){
+    const tid=el.dataset.id;
+    const target=DB.members.find(x=>x.id===tid);
+    if(!target){showToast('账号信息已变化，请重试');return;}
+    const pwd=($('#in-member-pwd')&&$('#in-member-pwd').value||'').trim();
+    if(!pwd){showToast('请输入对方的密码');return;}
+    const btn=el; btn.textContent='验证中...'; btn.disabled=true;
+    try{
+      // 密码验证走云端比对，本机不保存任何人的密码明文
+      const { data: mem, error } = await supabase.from('members').select('id, name, password').eq('id', tid).single();
+      if(error || !mem) throw new Error('网络异常，暂时无法切换身份');
+      const dbPwd=(mem.password==null?'':String(mem.password));
+      if(dbPwd===''){showToast('对方还没设置过密码，请让 TA 先设置');btn.textContent='验证并切换';btn.disabled=false;return;}
+      if(dbPwd!==pwd){showToast('密码不对');btn.textContent='验证并切换';btn.disabled=false;return;}
+      await enterSpace(SPACE_ID, mem.id, mem.name);
+      const code=(DB.space&&DB.space.inviteCode)||(readSession()?readSession().code:'');
+      writeSession(code, mem.name, pwd); // 验证通过 = 正式切换为本机账号，下次打开自动进入
+      UI.tmp.pendingMemberId=null; UI.view='main'; UI.tab='today'; UI.drawer=null; applyTheme(); render(); subscribeRealtime();
+      showToast('已切换为 '+mem.name);
+    }catch(err){showToast(err.message||'切换失败');btn.textContent='验证并切换';btn.disabled=false;}
+    return;
+  }
   if(a==='checkin-target'){UI.targetMemberId=el.dataset.id;UI.tmp.subType=null;render();return;}
   if(a==='pick-subtype'){UI.tmp.subType=el.dataset.sub;render();return;}
 
